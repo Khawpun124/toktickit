@@ -24,14 +24,15 @@ describe("App", () => {
     });
   });
 
-  it("shows an error message when the API is unavailable", async () => {
-    vi.spyOn(api, "checkHealth").mockRejectedValue(new Error("Network Error"));
+  it("shows System Status: Offline and error message when the API is unavailable", async () => {
+    vi.spyOn(api, "checkHealth").mockRejectedValue(new Error("Unable to connect to TokTickIT API"));
     render(<App />);
 
     const button = screen.getByRole("button", { name: /Check System/i });
     fireEvent.click(button);
 
     await waitFor(() => {
+      expect(screen.getByText(/System Status: Offline/i)).toBeInTheDocument();
       expect(screen.getByText(/Unable to connect to TokTickIT API/i)).toBeInTheDocument();
     });
   });

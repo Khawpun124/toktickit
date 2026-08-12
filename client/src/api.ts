@@ -17,15 +17,18 @@ export interface HealthResponse {
 
 // Issue 2 — API health check
 export async function checkHealth(): Promise<HealthResponse> {
+  let res: Response;
   try {
-    const res = await fetch(`${API_URL}/api/health`);
-    if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
-    }
-    return await res.json();
-  } catch (error) {
+    res = await fetch(`${API_URL}/api/health`);
+  } catch {
     throw new Error("Unable to connect to TokTickIT API");
   }
+
+  if (!res.ok) {
+    throw new Error("TokTickIT API returned an unexpected error");
+  }
+
+  return await res.json();
 }
 
 export async function checkSystem(): Promise<SystemStatus> {

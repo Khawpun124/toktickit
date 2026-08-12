@@ -18,9 +18,13 @@ export default function App() {
         setState("error");
         setErrorMessage("Unable to connect to TokTickIT API");
       }
-    } catch {
+    } catch (err: unknown) {
       setState("error");
-      setErrorMessage("Unable to connect to TokTickIT API");
+      if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("Unable to connect to TokTickIT API");
+      }
     }
   }
 
@@ -42,7 +46,8 @@ export default function App() {
 
       {state === "error" && (
         <div className="alert alert-danger mt-3" role="alert">
-          {errorMessage || "Unable to connect to TokTickIT API"}
+          <div><strong>System Status: Offline</strong></div>
+          <div>{errorMessage || "Unable to connect to TokTickIT API"}</div>
         </div>
       )}
     </div>
