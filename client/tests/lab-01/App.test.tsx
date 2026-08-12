@@ -1,17 +1,38 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import App from "../../src/App.js";
+import * as api from "../../src/api.js";
 
 describe("App", () => {
-  // WORKED EXAMPLE — provided for you.
   it("renders the TokTickIT heading", () => {
     render(<App />);
     expect(screen.getByText(/TokTickIT/i)).toBeInTheDocument();
   });
 
-  // Issue 4 — write these yourself. Hint: mock the api module with
-  // vi.spyOn(api, "checkSystem").mockResolvedValue(...) / .mockRejectedValue(...)
-  // then click the button and assert the Online list / Offline message.
-  it.todo("shows Online and the seeded categories on success");
-  it.todo("shows an Offline error message when the API is unavailable");
+  it("shows loading state and System Status: Online when health check succeeds", async () => {
+    vi.spyOn(api, "checkHealth").mockResolvedValue({ status: "ok", service: "TokTickIT API" });
+    render(<App />);
+
+    const button = screen.getByRole("button", { name: /Check System/i });
+    fireEvent.click(button);
+
+    expect(button).toBeDisabled();
+    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText(/System Status: Online/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows an error message when the API is unavailable", async () => {
+    vi.spyOn(api, "checkHealth").mockRejectedValue(new Error("Network Error"));
+    render(<App />);
+
+    const button = screen.getByRole("button", { name: /Check System/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Unable to connect to TokTickIT API/i)).toBeInTheDocument();
+    });
+  });
 });

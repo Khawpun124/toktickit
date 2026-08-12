@@ -1,19 +1,27 @@
 import { useState } from "react";
-import { checkSystem, Category } from "./api.js";
+import { checkHealth } from "./api.js";
 
-// UI states you must handle for Issue 4: idle, loading, success, error.
 type UiState = "idle" | "loading" | "success" | "error";
 
 export default function App() {
   const [state, setState] = useState<UiState>("idle");
-  const [categories, setCategories] = useState<Category[]>([]);
-  void categories;
+  const [errorMessage, setErrorMessage] = useState<string>("");
 
   async function handleCheck() {
-    // TODO(Issue 4): set loading, call checkSystem(), then either
-    //   - success: store categories and show Online + the list, or
-    //   - error: show Offline + a useful message.
     setState("loading");
+    setErrorMessage("");
+    try {
+      const res = await checkHealth();
+      if (res.status === "ok") {
+        setState("success");
+      } else {
+        setState("error");
+        setErrorMessage("Unable to connect to TokTickIT API");
+      }
+    } catch {
+      setState("error");
+      setErrorMessage("Unable to connect to TokTickIT API");
+    }
   }
 
   return (
@@ -26,7 +34,17 @@ export default function App() {
         {state === "loading" ? "Loading…" : "Check System"}
       </button>
 
-      {/* TODO(Issue 4): render loading / success (Online + categories) / error (Offline) states. */}
+      {state === "success" && (
+        <div className="alert alert-success mt-3" role="status">
+          System Status: Online
+        </div>
+      )}
+
+      {state === "error" && (
+        <div className="alert alert-danger mt-3" role="alert">
+          {errorMessage || "Unable to connect to TokTickIT API"}
+        </div>
+      )}
     </div>
   );
 }
