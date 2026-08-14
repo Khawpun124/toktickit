@@ -11,6 +11,7 @@ describe("App", () => {
 
   it("shows loading state and System Status: Online when health check succeeds", async () => {
     vi.spyOn(api, "checkHealth").mockResolvedValue({ status: "ok", service: "TokTickIT API" });
+    vi.spyOn(api, "getCategories").mockResolvedValue([]);
     render(<App />);
 
     const button = screen.getByRole("button", { name: /Check System/i });
@@ -34,6 +35,29 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText(/System Status: Offline/i)).toBeInTheDocument();
       expect(screen.getByText(/Unable to connect to TokTickIT API/i)).toBeInTheDocument();
+    });
+  });
+
+  it("displays category list when system check and category fetch succeed", async () => {
+    vi.spyOn(api, "checkHealth").mockResolvedValue({ status: "ok", service: "TokTickIT API" });
+    vi.spyOn(api, "getCategories").mockResolvedValue([
+      { id: 1, name: "Account and Access" },
+      { id: 2, name: "Hardware" },
+      { id: 3, name: "Software" },
+      { id: 4, name: "Network" },
+    ]);
+    render(<App />);
+
+    const button = screen.getByRole("button", { name: /Check System/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText(/System Status: Online/i)).toBeInTheDocument();
+      expect(screen.getByText(/Supported Request Categories:/i)).toBeInTheDocument();
+      expect(screen.getByText("Account and Access")).toBeInTheDocument();
+      expect(screen.getByText("Hardware")).toBeInTheDocument();
+      expect(screen.getByText("Software")).toBeInTheDocument();
+      expect(screen.getByText("Network")).toBeInTheDocument();
     });
   });
 });
