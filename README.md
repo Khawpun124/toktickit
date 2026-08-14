@@ -113,6 +113,11 @@ npm run prisma:seed
 ## 🏃 Running the Application
 
 ### Start Backend Development Server
+Ensure the PostgreSQL database container is running before starting the backend server:
+```bash
+docker compose up -d
+```
+Then start the backend server:
 ```bash
 cd server
 npm run dev
