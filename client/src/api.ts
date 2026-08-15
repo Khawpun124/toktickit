@@ -31,7 +31,27 @@ export async function checkHealth(): Promise<HealthResponse> {
   return await res.json();
 }
 
+// Issue 4 — Category list
+export async function getCategories(): Promise<Category[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/categories`);
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    throw new Error("TokTickIT API returned an unexpected error");
+  }
+
+  return await res.json();
+}
+
 export async function checkSystem(): Promise<SystemStatus> {
   const health = await checkHealth();
-  return { online: health.status === "ok", categories: [] };
+  if (health.status !== "ok") {
+    return { online: false, categories: [] };
+  }
+  const categories = await getCategories();
+  return { online: true, categories };
 }

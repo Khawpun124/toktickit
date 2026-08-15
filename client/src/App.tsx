@@ -1,18 +1,22 @@
 import { useState } from "react";
-import { checkHealth } from "./api.js";
+import { checkHealth, getCategories, Category } from "./api.js";
 
 type UiState = "idle" | "loading" | "success" | "error";
 
 export default function App() {
   const [state, setState] = useState<UiState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [categories, setCategories] = useState<Category[]>([]);
 
   async function handleCheck() {
     setState("loading");
     setErrorMessage("");
+    setCategories([]);
     try {
       const res = await checkHealth();
       if (res.status === "ok") {
+        const catList = await getCategories();
+        setCategories(catList);
         setState("success");
       } else {
         setState("error");
@@ -40,7 +44,17 @@ export default function App() {
 
       {state === "success" && (
         <div className="alert alert-success mt-3" role="status">
-          System Status: Online
+          <div>System Status: Online</div>
+          {categories.length > 0 && (
+            <div className="mt-3">
+              <div className="fw-bold mb-2">Supported Request Categories:</div>
+              <ul className="mb-0 ps-3">
+                {categories.map((cat) => (
+                  <li key={cat.id}>{cat.name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -53,3 +67,4 @@ export default function App() {
     </div>
   );
 }
+
