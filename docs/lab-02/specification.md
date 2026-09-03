@@ -115,7 +115,7 @@ manage their own tickets and attachments — never anyone else's.
   or out-of-range page parameters fall back to the default rather than erroring.
 
 ### Validation and duplicate-submission prevention
-- BR-15: Ticket Summary is required, trimmed, minimum 5 and maximum 150 characters.
+- BR-15: Ticket Summary is required, trimmed, minimum 5 and maximum 150 characters. Frontend blocks submission client-side as a UX convenience when Summary is under 5 characters. The backend independently and authoritatively re-validates the same rule on every request and returns HTTP 400 if violated, regardless of what the frontend already checked — this covers direct API calls that bypass the UI.
 - BR-16: Description is required, trimmed, minimum 10 and maximum 2000 characters.
 - BR-17: Category and Related System must reference existing, active records; an
   invalid or inactive reference is rejected with a field-level validation error.
@@ -222,8 +222,7 @@ See `docs/lab-02/api-spec.md` for full request/response shapes. Endpoint summary
 | GET | /api/attachments/:id/download | Download an active, owned Attachment |
 | DELETE | /api/attachments/:id | Soft-remove an owned Attachment |
 
-All requester-scoped endpoints require a `requesterId` (passed via header or query
-per the final api-spec.md decision) and enforce ownership server-side per BR-10.
+All requester-scoped endpoints require a Development Requester ID, passed via the header `X-Requester-Id: <number>`, and enforce ownership server-side per BR-10.
 
 ## 9. Acceptance Criteria
 

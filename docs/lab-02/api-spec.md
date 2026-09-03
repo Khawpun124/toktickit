@@ -117,10 +117,9 @@ Inactive Requesters are never included (BR-06).
 }
 ```
 
-**Missing/invalid requester context 400/401:**
-```json
-{ "error": "A Development Requester must be selected" }
-```
+**Requester context errors (see Requester ID Header Validation Rules in Section 12):**
+- 401 if `X-Requester-Id` header is missing — `{ "error": "Missing X-Requester-Id header" }`
+- 400 if `X-Requester-Id` header is invalid (non-numeric) or requester ID is non-existent/inactive — `{ "error": "Invalid or inactive requester ID" }`
 
 **Partial attachment failure (BR-27):** Ticket still returns 201; failed files
 listed:
@@ -185,9 +184,10 @@ sort, and pagination (BR-10 through BR-14).
 }
 ```
 
-**Errors:** 400 for a genuinely malformed (non-numeric) `categoryId`;
-500 for unexpected failure. Out-of-range `page`/`pageSize` never errors
-(BR-14) — it clamps instead.
+**Errors:**
+- 401 if `X-Requester-Id` header is missing; 400 if `X-Requester-Id` format is invalid or ID is inactive (see Section 12)
+- 400 for a genuinely malformed (non-numeric) `categoryId`
+- 500 for unexpected server failure. Out-of-range `page`/`pageSize` never errors (BR-14) — it clamps instead.
 
 ---
 
@@ -215,7 +215,9 @@ sort, and pagination (BR-10 through BR-14).
 }
 ```
 
-**Response 404 (not owned by current Requester, or does not exist — BR-10):**
+**Errors:**
+- 401 if `X-Requester-Id` header is missing; 400 if `X-Requester-Id` format is invalid or ID is inactive (see Section 12)
+- 404 (not owned by current Requester, or does not exist — BR-10):
 ```json
 { "error": "Ticket not found" }
 ```
@@ -245,6 +247,7 @@ ticket ID belongs to a different Requester (AC-03).
 ```
 
 **Errors:**
+- 401 if `X-Requester-Id` header is missing; 400 if `X-Requester-Id` format is invalid or ID is inactive (see Section 12)
 - 400 unsupported type — `{ "error": "Only JPG, PNG, WEBP, and PDF files are allowed" }`
 - 413 or 400 oversized — `{ "error": "File exceeds the 5 MB limit" }`
 - 400 count limit reached — `{ "error": "A ticket may have at most 5 active attachments" }`
@@ -280,7 +283,9 @@ ticket ID belongs to a different Requester (AC-03).
 ]
 ```
 
-**Errors:** 404 if the Ticket is not owned by the current Requester.
+**Errors:**
+- 401 if `X-Requester-Id` header is missing; 400 if `X-Requester-Id` format is invalid or ID is inactive (see Section 12)
+- 404 if the Ticket is not owned by the current Requester or does not exist (BR-10)
 
 ---
 
@@ -294,6 +299,7 @@ ticket ID belongs to a different Requester (AC-03).
 `Content-Disposition: attachment; filename="<fileName>"`
 
 **Errors:**
+- 401 if `X-Requester-Id` header is missing; 400 if `X-Requester-Id` format is invalid or ID is inactive (see Section 12)
 - 404 — Attachment does not exist, is not owned by the current Requester, or
   has been soft-removed:
   ```json
@@ -326,6 +332,7 @@ ticket ID belongs to a different Requester (AC-03).
 ```
 
 **Errors:**
+- 401 if `X-Requester-Id` header is missing; 400 if `X-Requester-Id` format is invalid or ID is inactive (see Section 12)
 - 400 missing reason — `{ "error": "A removal reason is required" }`
 - 404 not found / not owned — `{ "error": "Attachment not found" }`
 - 409 already removed — `{ "error": "Attachment has already been removed" }`
@@ -347,17 +354,28 @@ All list endpoints (currently only `GET /api/tickets`) use:
 }
 ```
 
-## 12. HTTP Status Code Summary
+## 12. Requester ID Header Validation Rules & HTTP Status Summary
+
+### Requester ID Header Validation Rules
+All requester-scoped endpoints (`POST /api/tickets`, `GET /api/tickets`, `GET /api/tickets/:id`, `POST /api/tickets/:id/attachments`, `GET /api/tickets/:id/attachments`, `GET /api/attachments/:id/download`, `DELETE /api/attachments/:id`) validate the `X-Requester-Id` header according to the following canonical rules:
+
+| Condition | HTTP Status | Response Error Message | Reason |
+|---|---|---|---|
+| No `X-Requester-Id` header supplied | 401 Unauthorized | `{ "error": "Missing X-Requester-Id header" }` | No requester context supplied to verify |
+| Format invalid (non-numeric) | 400 Bad Request | `{ "error": "Invalid X-Requester-Id header format" }` | Context supplied but malformed |
+| Requester ID does not exist or is inactive (BR-28) | 400 Bad Request | `{ "error": "Requester ID does not exist or is inactive" }` | Context supplied but identity invalid |
+
+### HTTP Status Code Summary
 
 | Status | Meaning | Example Use |
 |---|---|---|
 | 200 | Success | Successful GET, DELETE (soft-remove) |
 | 201 | Created | Ticket created, Attachment uploaded |
-| 400 | Invalid input | Validation failure, missing reason, malformed query param |
-| 401 | Missing requester context | No `X-Requester-Id` header supplied |
+| 400 | Bad Request / Invalid input | Field validation failure, missing removal reason, malformed/invalid `X-Requester-Id` header |
+| 401 | Unauthorized / Missing context | No `X-Requester-Id` header supplied |
 | 404 | Resource not found or not owned | Ticket/Attachment not found or belongs to another Requester |
 | 409 | Conflict | Attachment already removed |
-| 413 | Payload too large | Attachment exceeds 5 MB (if enforced at the transport layer) |
+| 413 | Payload too large | Attachment exceeds 5 MB (if enforced at transport layer) |
 | 500 | Unexpected server error | Database or unhandled exception |
 
 ## 13. Ownership Enforcement Note

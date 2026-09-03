@@ -15,7 +15,7 @@ Every Acceptance Criterion maps to at least one automated test with a real file 
 | UNIT-01 | Unit | BR-01 | Ticket Number generator produces unique `TKT-YYYY-NNNNNN` format | Format matches regex; two calls in sequence differ | `server/tests/lab-02/ticket-number.unit.test.ts` | Pending |
 | UNIT-02 | Unit | BR-14 | Page-size clamping helper | Values >50 or <1 fall back to default (10) | `server/tests/lab-02/pagination.unit.test.ts` | Pending |
 | API-01 | API | AC-01, BR-01, BR-02 | `POST /api/tickets` with valid data | 201; Ticket saved with Status `New`; unique Ticket Number returned | `server/tests/lab-02/create-ticket.api.test.ts` | Pending |
-| API-02 | API | AC-04, BR-15 | `POST /api/tickets` with Summary < 5 chars | 400; field-level error; no Ticket persisted | `server/tests/lab-02/create-ticket.api.test.ts` | Pending |
+| API-02 | API | AC-04, BR-15 | Backend defense-in-depth re-validation for POST /api/tickets with Summary < 5 chars (bypassing frontend) | 400; field-level error; no Ticket persisted | `server/tests/lab-02/create-ticket.api.test.ts` | Pending |
 | API-03 | API | BR-16 | `POST /api/tickets` with Description > 2000 chars | 400; field-level error | `server/tests/lab-02/create-ticket.api.test.ts` | Pending |
 | API-04 | API | BR-17 | `POST /api/tickets` with inactive Category | 400; field-level error | `server/tests/lab-02/create-ticket.api.test.ts` | Pending |
 | API-05 | API | AC-03, BR-10 | `GET /api/tickets/:id` for a Ticket owned by another Requester | Not-found response; no Ticket data leaked | `server/tests/lab-02/ticket-detail.api.test.ts` | Pending |
