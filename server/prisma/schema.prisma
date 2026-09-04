@@ -17,8 +17,10 @@ datasource db {
 model Category {
   id        Int      @id @default(autoincrement())
   name      String   @unique
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 }
+
 
 // ---------------------------------------------------------------------------
 // Lab 2 Issue 2 — RequesterUser and RelatedSystem
