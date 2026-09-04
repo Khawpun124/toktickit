@@ -1,12 +1,21 @@
-import { useState } from "react";
+import React, { useState } from "react";
+import { RequesterProvider, useRequester } from "./context/RequesterContext.js";
+import { AppHeader } from "./components/AppHeader.js";
+import { RequesterSelectionScreen } from "./components/RequesterSelectionScreen.js";
 import { checkHealth, getCategories, Category } from "./api.js";
+import "./index.css";
 
 type UiState = "idle" | "loading" | "success" | "error";
 
-export default function App() {
+function MainContent() {
+  const { selectedRequester } = useRequester();
   const [state, setState] = useState<UiState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [categories, setCategories] = useState<Category[]>([]);
+
+  if (!selectedRequester) {
+    return <RequesterSelectionScreen />;
+  }
 
   async function handleCheck() {
     setState("loading");
@@ -33,7 +42,14 @@ export default function App() {
   }
 
   return (
-    <div className="container py-5" style={{ maxWidth: 640 }}>
+    <div className="container py-4" style={{ maxWidth: 640 }}>
+      <div className="alert alert-success mb-4">
+        <h5 className="alert-heading mb-1">Development Requester Active</h5>
+        <div>
+          Current Requester Context: <strong>{selectedRequester.name}</strong> ({selectedRequester.email})
+        </div>
+      </div>
+
       <h1 className="h3 mb-4">
         TokTickIT <span className="text-success">IT Service Desk</span>
       </h1>
@@ -67,4 +83,19 @@ export default function App() {
     </div>
   );
 }
+
+export default function App() {
+  return (
+    <RequesterProvider>
+      <div className="min-vh-100 d-flex flex-column">
+        <AppHeader />
+        <main className="flex-grow-1">
+          <MainContent />
+        </main>
+      </div>
+    </RequesterProvider>
+  );
+}
+
+
 

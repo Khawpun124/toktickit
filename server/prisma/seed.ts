@@ -21,7 +21,41 @@ async function main() {
     });
   }
 
-  console.log("Seeding categories completed successfully.");
+  const requesters = [
+    { name: "Jennifer Anderson", email: "jennifer.anderson@example.com", isActive: true },
+    { name: "Michael Brown", email: "michael.brown@example.com", isActive: true },
+    { name: "Sarah Connor", email: "sarah.connor@example.com", isActive: true },
+    { name: "David Miller", email: "david.miller@example.com", isActive: true },
+    { name: "Inactive Tester", email: "inactive.tester@example.com", isActive: false },
+  ];
+
+  for (const req of requesters) {
+    await prisma.requesterUser.upsert({
+      where: { email: req.email },
+      update: { name: req.name, isActive: req.isActive },
+      create: req,
+    });
+  }
+
+  const relatedSystems = [
+    "Email",
+    "Campus Wi-Fi",
+    "VPN",
+    "LEB2 App",
+    "Grade Submission App",
+    "Printer",
+    "Corporate Laptop",
+  ];
+
+  for (const name of relatedSystems) {
+    await prisma.relatedSystem.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
+
+  console.log("Seeding categories, requesters, and related systems completed successfully.");
 }
 
 main()
@@ -32,3 +66,4 @@ main()
   .finally(async () => {
     await getPrisma().$disconnect();
   });
+

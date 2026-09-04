@@ -20,3 +20,22 @@ model Category {
   createdAt DateTime @default(now())
 }
 
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 2 — RequesterUser and RelatedSystem
+// ---------------------------------------------------------------------------
+
+model RequesterUser {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model RelatedSystem {
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  isActive Boolean @default(true)
+}
+
+

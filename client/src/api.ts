@@ -5,6 +5,17 @@ export interface Category {
   name: string;
 }
 
+export interface RequesterUser {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export interface RelatedSystem {
+  id: number;
+  name: string;
+}
+
 export interface SystemStatus {
   online: boolean;
   categories: Category[];
@@ -47,6 +58,38 @@ export async function getCategories(): Promise<Category[]> {
   return await res.json();
 }
 
+// Issue 2 — Development Requester list
+export async function getRequesters(): Promise<RequesterUser[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/requesters`);
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    throw new Error("Unable to load requesters");
+  }
+
+  return await res.json();
+}
+
+// Issue 2 — Related Systems list
+export async function getRelatedSystems(): Promise<RelatedSystem[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/related-systems`);
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    throw new Error("Unable to load related systems");
+  }
+
+  return await res.json();
+}
+
 export async function checkSystem(): Promise<SystemStatus> {
   const health = await checkHealth();
   if (health.status !== "ok") {
@@ -55,3 +98,4 @@ export async function checkSystem(): Promise<SystemStatus> {
   const categories = await getCategories();
   return { online: true, categories };
 }
+

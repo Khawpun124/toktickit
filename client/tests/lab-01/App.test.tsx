@@ -1,13 +1,28 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import React from "react";
 import App from "../../src/App.js";
 import * as api from "../../src/api.js";
 
 describe("App", () => {
+  const mockRequester = {
+    id: 1,
+    name: "Jennifer Anderson",
+    email: "jennifer.anderson@example.com",
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
+    vi.spyOn(api, "getRequesters").mockResolvedValue([mockRequester]);
+  });
+
   it("renders the TokTickIT heading", () => {
     render(<App />);
-    expect(screen.getByText(/TokTickIT/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/TokTickIT/i).length).toBeGreaterThan(0);
   });
+
 
   it("shows loading state and System Status: Online when health check succeeds", async () => {
     vi.spyOn(api, "checkHealth").mockResolvedValue({ status: "ok", service: "TokTickIT API" });
@@ -61,3 +76,5 @@ describe("App", () => {
     });
   });
 });
+
+
