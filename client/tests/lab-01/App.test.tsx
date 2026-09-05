@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import App from "../../src/App.js";
 import * as api from "../../src/api.js";
@@ -11,70 +11,61 @@ describe("App", () => {
     email: "jennifer.anderson@example.com",
   };
 
+  const mockCategories = [
+    { id: 1, name: "Account and Access" },
+    { id: 2, name: "Hardware" },
+    { id: 3, name: "Software" },
+    { id: 4, name: "Network" },
+  ];
+
+  const mockSystems = [
+    { id: 1, name: "Email" },
+  ];
+
   beforeEach(() => {
     vi.restoreAllMocks();
     sessionStorage.clear();
-    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
     vi.spyOn(api, "getRequesters").mockResolvedValue([mockRequester]);
+    vi.spyOn(api, "getCategories").mockResolvedValue(mockCategories);
+    vi.spyOn(api, "getRelatedSystems").mockResolvedValue(mockSystems);
   });
 
-  it("renders the TokTickIT heading", () => {
+  it("renders the TokTickIT heading", async () => {
     render(<App />);
-    expect(screen.getAllByText(/TokTickIT/i).length).toBeGreaterThan(0);
-  });
-
-
-  it("shows loading state and System Status: Online when health check succeeds", async () => {
-    vi.spyOn(api, "checkHealth").mockResolvedValue({ status: "ok", service: "TokTickIT API" });
-    vi.spyOn(api, "getCategories").mockResolvedValue([]);
-    render(<App />);
-
-    const button = screen.getByRole("button", { name: /Check System/i });
-    fireEvent.click(button);
-
-    expect(button).toBeDisabled();
-    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
-
     await waitFor(() => {
-      expect(screen.getByText(/System Status: Online/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/TokTickIT/i).length).toBeGreaterThan(0);
     });
   });
 
-  it("shows System Status: Offline and error message when the API is unavailable", async () => {
-    vi.spyOn(api, "checkHealth").mockRejectedValue(new Error("Unable to connect to TokTickIT API"));
+
+  it("shows Requester Selection screen when no requester is selected", async () => {
     render(<App />);
-
-    const button = screen.getByRole("button", { name: /Check System/i });
-    fireEvent.click(button);
-
     await waitFor(() => {
-      expect(screen.getByText(/System Status: Offline/i)).toBeInTheDocument();
-      expect(screen.getByText(/Unable to connect to TokTickIT API/i)).toBeInTheDocument();
+      expect(screen.getByText(/Select Development Requester/i)).toBeInTheDocument();
     });
   });
 
-  it("displays category list when system check and category fetch succeed", async () => {
-    vi.spyOn(api, "checkHealth").mockResolvedValue({ status: "ok", service: "TokTickIT API" });
-    vi.spyOn(api, "getCategories").mockResolvedValue([
-      { id: 1, name: "Account and Access" },
-      { id: 2, name: "Hardware" },
-      { id: 3, name: "Software" },
-      { id: 4, name: "Network" },
-    ]);
+  it("renders Create Support Ticket screen when requester context is active", async () => {
+    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
     render(<App />);
 
-    const button = screen.getByRole("button", { name: /Check System/i });
-    fireEvent.click(button);
+    await waitFor(() => {
+      expect(screen.getByText(/Create Support Ticket/i)).toBeInTheDocument();
+    });
+  });
+
+  it("displays category list in Create Ticket form when category fetch succeeds", async () => {
+    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
+    render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText(/System Status: Online/i)).toBeInTheDocument();
-      expect(screen.getByText(/Supported Request Categories:/i)).toBeInTheDocument();
-      expect(screen.getByText("Account and Access")).toBeInTheDocument();
-      expect(screen.getByText("Hardware")).toBeInTheDocument();
-      expect(screen.getByText("Software")).toBeInTheDocument();
-      expect(screen.getByText("Network")).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Account and Access" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Hardware" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Software" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Network" })).toBeInTheDocument();
     });
   });
 });
+
 
 

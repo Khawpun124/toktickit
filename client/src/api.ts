@@ -99,3 +99,58 @@ export async function checkSystem(): Promise<SystemStatus> {
   return { online: true, categories };
 }
 
+export interface CreateTicketPayload {
+  categoryId: number;
+  relatedSystemId: number;
+  summary: string;
+  description: string;
+  requestedPriority: "LOW" | "MEDIUM" | "HIGH";
+}
+
+export interface Ticket {
+  id: number;
+  ticketNumber: string;
+  requesterId: number;
+  categoryId: number;
+  relatedSystemId: number;
+  summary: string;
+  description: string;
+  requestedPriority: "LOW" | "MEDIUM" | "HIGH";
+  itPriority: "LOW" | "MEDIUM" | "HIGH" | null;
+  currentStatus: string;
+  createdAt: string;
+  updatedAt: string;
+  attachmentUploadErrors: { fileName: string; reason: string }[];
+}
+
+export async function createTicket(
+  payload: CreateTicketPayload,
+  requesterId: number
+): Promise<Ticket> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/tickets`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requester-Id": requesterId.toString(),
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error || "Unable to create ticket") as Error & { fields?: Record<string, string> };
+    if (data && data.fields) {
+      err.fields = data.fields;
+    }
+    throw err;
+  }
+
+  return data;
+}
+
+
