@@ -32,6 +32,9 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
   try {
     const prisma = getPrisma();
     const categories = await prisma.category.findMany({
+      where: {
+        isActive: true,
+      },
       select: {
         id: true,
         name: true,
@@ -46,4 +49,57 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 2 — Development Requester list
+// GET /api/requesters -> returns active RequesterUser records only (BR-06)
+// ---------------------------------------------------------------------------
+app.get("/api/requesters", async (_req: Request, res: Response) => {
+  try {
+    const prisma = getPrisma();
+    const requesters = await prisma.requesterUser.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+      orderBy: {
+        id: "asc",
+      },
+    });
+    res.status(200).json(requesters);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load requesters" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 2 — Related Systems list
+// GET /api/related-systems -> returns active RelatedSystem records only
+// ---------------------------------------------------------------------------
+app.get("/api/related-systems", async (_req: Request, res: Response) => {
+  try {
+    const prisma = getPrisma();
+    const systems = await prisma.relatedSystem.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        id: "asc",
+      },
+    });
+    res.status(200).json(systems);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load related systems" });
+  }
+});
+
 export default app;
+
