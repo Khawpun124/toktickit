@@ -16,6 +16,10 @@ describe("RequesterSelectionScreen and Context (UI-01, UI-02)", () => {
     vi.spyOn(api, "getRelatedSystems").mockResolvedValue([
       { id: 1, name: "Email" },
     ]);
+    vi.spyOn(api, "getTickets").mockResolvedValue({
+      data: [],
+      pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 },
+    });
   });
 
   it("UI-01: loads active Requesters only into the dropdown and excludes inactive requesters", async () => {
@@ -76,7 +80,7 @@ describe("RequesterSelectionScreen and Context (UI-01, UI-02)", () => {
     fireEvent.click(continueButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Create Support Ticket/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /My Tickets/i })).toBeInTheDocument();
       expect(screen.getAllByText(/Michael Brown/i).length).toBeGreaterThan(0);
     });
 
@@ -92,4 +96,5 @@ describe("RequesterSelectionScreen and Context (UI-01, UI-02)", () => {
     });
   });
 });
+
 

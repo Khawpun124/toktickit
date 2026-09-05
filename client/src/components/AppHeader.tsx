@@ -1,20 +1,52 @@
 import React from "react";
 import { useRequester } from "../context/RequesterContext.js";
 
-export const AppHeader: React.FC = () => {
+interface AppHeaderProps {
+  activeTab?: "my-tickets" | "create-ticket";
+  onSelectTab?: (tab: "my-tickets" | "create-ticket") => void;
+}
+
+export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) => {
   const { selectedRequester, clearRequester } = useRequester();
 
   return (
     <header className="zg-header shadow-sm py-2 px-3">
       <div className="container-fluid d-flex align-items-center justify-content-between">
-        <div className="d-flex align-items-center gap-3">
-          <span className="h4 mb-0 fw-bold tracking-tight text-white">TokTickIT</span>
-          <span className="badge bg-light text-dark font-weight-normal small">IT Service Desk</span>
+        <div className="d-flex align-items-center gap-4">
+          <div className="d-flex align-items-center gap-2">
+            <span className="h4 mb-0 fw-bold tracking-tight text-white">TokTickIT</span>
+            <span className="badge bg-light text-dark font-weight-normal small">IT Service Desk</span>
+          </div>
+
+          {selectedRequester && onSelectTab && (
+            <nav className="d-flex gap-2">
+              <button
+                onClick={() => onSelectTab("my-tickets")}
+                className={`btn btn-sm ${
+                  activeTab === "my-tickets"
+                    ? "btn-light fw-bold text-success"
+                    : "btn-outline-light"
+                }`}
+              >
+                My Tickets
+              </button>
+              <button
+                onClick={() => onSelectTab("create-ticket")}
+                className={`btn btn-sm ${
+                  activeTab === "create-ticket"
+                    ? "btn-light fw-bold text-success"
+                    : "btn-outline-light"
+                }`}
+              >
+                + Create Ticket
+              </button>
+            </nav>
+          )}
         </div>
 
         {selectedRequester && (
           <div className="d-flex align-items-center gap-3">
-            <div className="text-end text-white">
+            <div className="text-end text-white d-none d-sm-block">
               <div className="small opacity-75">Selected Requester</div>
               <div className="fw-semibold text-truncate" style={{ maxWidth: 200 }}>
                 {selectedRequester.name}
@@ -33,3 +65,4 @@ export const AppHeader: React.FC = () => {
     </header>
   );
 };
+

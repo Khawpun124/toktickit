@@ -153,4 +153,75 @@ export async function createTicket(
   return data;
 }
 
+export interface GetTicketsParams {
+  search?: string;
+  categoryId?: string | number;
+  requestedPriority?: string;
+  itPriority?: string;
+  currentStatus?: string;
+  sortBy?: "createdAt" | "ticketNumber";
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
+export interface TicketListItem {
+  id: number;
+  ticketNumber: string;
+  summary: string;
+  categoryName: string;
+  requestedPriority: "LOW" | "MEDIUM" | "HIGH";
+  itPriority: "LOW" | "MEDIUM" | "HIGH" | null;
+  currentStatus: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaginationInfo {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+}
+
+export interface TicketsResponse {
+  data: TicketListItem[];
+  pagination: PaginationInfo;
+}
+
+// Issue 4 — My Tickets List
+export async function getTickets(
+  params: GetTicketsParams,
+  requesterId: number
+): Promise<TicketsResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.append("search", params.search);
+  if (params.categoryId) query.append("categoryId", params.categoryId.toString());
+  if (params.requestedPriority) query.append("requestedPriority", params.requestedPriority);
+  if (params.itPriority) query.append("itPriority", params.itPriority);
+  if (params.currentStatus) query.append("currentStatus", params.currentStatus);
+  if (params.sortBy) query.append("sortBy", params.sortBy);
+  if (params.sortDir) query.append("sortDir", params.sortDir);
+  if (params.page) query.append("page", params.page.toString());
+  if (params.pageSize) query.append("pageSize", params.pageSize.toString());
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/tickets?${query.toString()}`, {
+      headers: {
+        "X-Requester-Id": requesterId.toString(),
+      },
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    throw new Error("Unable to load tickets");
+  }
+
+  return await res.json();
+}
+
+
 
