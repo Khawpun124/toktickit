@@ -10,6 +10,12 @@ describe("RequesterSelectionScreen and Context (UI-01, UI-02)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     sessionStorage.clear();
+    vi.spyOn(api, "getCategories").mockResolvedValue([
+      { id: 1, name: "Account and Access" },
+    ]);
+    vi.spyOn(api, "getRelatedSystems").mockResolvedValue([
+      { id: 1, name: "Email" },
+    ]);
   });
 
   it("UI-01: loads active Requesters only into the dropdown and excludes inactive requesters", async () => {
@@ -70,10 +76,9 @@ describe("RequesterSelectionScreen and Context (UI-01, UI-02)", () => {
     fireEvent.click(continueButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Current Requester Context:/i)).toBeInTheDocument();
+      expect(screen.getByText(/Create Support Ticket/i)).toBeInTheDocument();
       expect(screen.getAllByText(/Michael Brown/i).length).toBeGreaterThan(0);
     });
-
 
     // Header should show Change Requester button
     const changeButton = screen.getByRole("button", { name: /Change Requester/i });
@@ -87,3 +92,4 @@ describe("RequesterSelectionScreen and Context (UI-01, UI-02)", () => {
     });
   });
 });
+
