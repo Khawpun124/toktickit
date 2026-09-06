@@ -10,9 +10,13 @@ import { useRequester } from "../context/RequesterContext.js";
 
 interface MyTicketsScreenProps {
   onNavigateToCreate: () => void;
+  onSelectTicket?: (id: number) => void;
 }
 
-export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({ onNavigateToCreate }) => {
+export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
+  onNavigateToCreate,
+  onSelectTicket,
+}) => {
   const { selectedRequester } = useRequester();
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -366,7 +370,11 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({ onNavigateToCr
               </thead>
               <tbody>
                 {tickets.map((t) => (
-                  <tr key={t.id}>
+                  <tr
+                    key={t.id}
+                    onClick={() => onSelectTicket?.(t.id)}
+                    style={{ cursor: onSelectTicket ? "pointer" : "default" }}
+                  >
                     <td className="font-monospace fw-bold text-success">{t.ticketNumber}</td>
                     <td className="small text-muted">
                       {new Date(t.createdAt).toLocaleDateString("en-US", {
@@ -389,7 +397,12 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({ onNavigateToCr
           {/* Mobile Card List View (d-md-none) */}
           <div className="d-md-none d-flex flex-column gap-3 mb-4">
             {tickets.map((t) => (
-              <div key={t.id} className="zg-card p-3">
+              <div
+                key={t.id}
+                className="zg-card p-3"
+                onClick={() => onSelectTicket?.(t.id)}
+                style={{ cursor: onSelectTicket ? "pointer" : "default" }}
+              >
                 <div className="d-flex justify-content-between align-items-start mb-2">
                   <span className="font-monospace fw-bold text-success">{t.ticketNumber}</span>
                   {renderStatusBadge(t.currentStatus)}

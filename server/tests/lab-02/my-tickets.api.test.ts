@@ -115,4 +115,34 @@ describe("GET /api/tickets (My Tickets API)", () => {
     expect(res.body.pagination.page).toBe(1);
     expect(res.body.pagination.pageSize).toBe(10);
   });
+
+  it("returns 400 when requestedPriority query parameter is invalid", async () => {
+    const res = await request(app)
+      .get("/api/tickets?requestedPriority=INVALID")
+      .set("X-Requester-Id", "3");
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatch(/Invalid requestedPriority/i);
+  });
+
+  it("returns 400 when currentStatus query parameter is invalid", async () => {
+    const res = await request(app)
+      .get("/api/tickets?currentStatus=NOT_A_REAL_STATUS")
+      .set("X-Requester-Id", "3");
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatch(/Invalid currentStatus/i);
+  });
+
+  it("filters tickets correctly when valid requestedPriority is supplied (regression check)", async () => {
+    const res = await request(app)
+      .get("/api/tickets?requestedPriority=HIGH")
+      .set("X-Requester-Id", "3");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].summary).toBe("Laptop battery issues");
+  });
 });
