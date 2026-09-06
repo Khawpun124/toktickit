@@ -73,6 +73,26 @@ model Ticket {
   currentStatus     TicketStatus  @default(NEW)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
+  attachments       Attachment[]
 
   @@index([requesterId])
+}
+
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 5 — Attachment model
+// ---------------------------------------------------------------------------
+
+model Attachment {
+  id             Int       @id @default(autoincrement())
+  ticketId       Int
+  ticket         Ticket    @relation(fields: [ticketId], references: [id])
+  fileName       String
+  storedFileName String
+  mimeType       String
+  sizeBytes      Int
+  uploadedAt     DateTime  @default(now())
+  removedAt      DateTime?
+  removedReason  String?
+
+  @@index([ticketId])
 }

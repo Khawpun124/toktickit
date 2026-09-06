@@ -1,6 +1,32 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
+import path from "path";
+import fs from "fs";
+import crypto from "crypto";
+import multer from "multer";
 import { getPrisma } from "./prisma.js";
+
+const uploadDir = path.resolve(process.cwd(), "uploads/attachments");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const storedName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
+    cb(null, storedName);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
 // getPrisma() is your lazy database handle. Call it INSIDE a route when you
 // need the DB (Issue 4). It is intentionally unused until then.
 void getPrisma;
@@ -288,15 +314,30 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
   }
 
   // Priority filters
-  if (requestedPriority && typeof requestedPriority === "string") {
+  const validPriorities = ["LOW", "MEDIUM", "HIGH"];
+  if (requestedPriority !== undefined && requestedPriority !== "") {
+    if (typeof requestedPriority !== "string" || !validPriorities.includes(requestedPriority)) {
+      res.status(400).json({ error: "Invalid requestedPriority. Allowed values: LOW, MEDIUM, HIGH" });
+      return;
+    }
     whereClause.requestedPriority = requestedPriority;
   }
-  if (itPriority && typeof itPriority === "string") {
+
+  if (itPriority !== undefined && itPriority !== "") {
+    if (typeof itPriority !== "string" || !validPriorities.includes(itPriority)) {
+      res.status(400).json({ error: "Invalid itPriority. Allowed values: LOW, MEDIUM, HIGH" });
+      return;
+    }
     whereClause.itPriority = itPriority;
   }
 
   // Current status filter
-  if (currentStatus && typeof currentStatus === "string") {
+  const validStatuses = ["NEW"];
+  if (currentStatus !== undefined && currentStatus !== "") {
+    if (typeof currentStatus !== "string" || !validStatuses.includes(currentStatus)) {
+      res.status(400).json({ error: "Invalid currentStatus. Allowed values: NEW" });
+      return;
+    }
     whereClause.currentStatus = currentStatus;
   }
 
@@ -377,6 +418,266 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({ error: "Unable to load tickets" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 5 — Requester Ticket Detail & Attachments
+// ---------------------------------------------------------------------------
+
+// 6. GET /api/tickets/:id -> Retrieve one owned Ticket (BR-10, AC-03)
+app.get("/api/tickets/:id", async (req: Request, res: Response) => {
+  const requesterId = await validateRequesterHeader(req, res);
+  if (requesterId === null) return;
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: parsedTicketId },
+      include: {
+        category: { select: { name: true } },
+        relatedSystem: { select: { name: true } },
+      },
+    });
+
+    if (!ticket || ticket.requesterId !== requesterId) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    res.status(200).json({
+      id: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      requesterId: ticket.requesterId,
+      categoryName: ticket.category.name,
+      relatedSystemName: ticket.relatedSystem.name,
+      summary: ticket.summary,
+      description: ticket.description,
+      requestedPriority: ticket.requestedPriority,
+      itPriority: ticket.itPriority,
+      currentStatus: ticket.currentStatus,
+      createdAt: ticket.createdAt.toISOString(),
+      updatedAt: ticket.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load ticket details" });
+  }
+});
+
+// 7. POST /api/tickets/:id/attachments -> Upload an Attachment to an owned Ticket (BR-21, BR-22, BR-23, BR-26)
+app.post("/api/tickets/:id/attachments", (req: Request, res: Response) => {
+  upload.single("file")(req, res, async (err: any) => {
+    const requesterId = await validateRequesterHeader(req, res);
+    if (requesterId === null) return;
+
+    const parsedTicketId = parseInt(req.params.id, 10);
+    if (isNaN(parsedTicketId)) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    try {
+      const prisma = getPrisma();
+      const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+      if (!ticket || ticket.requesterId !== requesterId) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(404).json({ error: "Ticket not found" });
+        return;
+      }
+
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: "No file uploaded" });
+        return;
+      }
+
+      // Validate type (BR-21): JPG/JPEG, PNG, WEBP, PDF
+      const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
+      const ext = path.extname(file.originalname).toLowerCase();
+      const allowedExts = [".jpg", ".jpeg", ".png", ".webp", ".pdf"];
+
+      if (!allowedMimeTypes.includes(file.mimetype) || !allowedExts.includes(ext)) {
+        if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        res.status(400).json({ error: "Only JPG, PNG, WEBP, and PDF files are allowed" });
+        return;
+      }
+
+      // Validate size (BR-22): 5MB
+      if (file.size > 5 * 1024 * 1024 || err?.code === "LIMIT_FILE_SIZE") {
+        if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        res.status(400).json({ error: "File exceeds the 5 MB limit" });
+        return;
+      }
+
+      // Validate count limit (BR-23): max 5 active attachments
+      const activeCount = await prisma.attachment.count({
+        where: { ticketId: parsedTicketId, removedAt: null },
+      });
+
+      if (activeCount >= 5) {
+        if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        res.status(400).json({ error: "A ticket may have at most 5 active attachments" });
+        return;
+      }
+
+      const attachment = await prisma.attachment.create({
+        data: {
+          ticketId: parsedTicketId,
+          fileName: file.originalname,
+          storedFileName: file.filename,
+          mimeType: file.mimetype,
+          sizeBytes: file.size,
+        },
+      });
+
+      res.status(201).json({
+        id: attachment.id,
+        ticketId: attachment.ticketId,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        uploadedAt: attachment.uploadedAt.toISOString(),
+        removedAt: null,
+      });
+    } catch (error) {
+      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      res.status(500).json({ error: "Unable to upload attachment" });
+    }
+  });
+});
+
+// 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket
+app.get("/api/tickets/:id/attachments", async (req: Request, res: Response) => {
+  const requesterId = await validateRequesterHeader(req, res);
+  if (requesterId === null) return;
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+    if (!ticket || ticket.requesterId !== requesterId) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const attachments = await prisma.attachment.findMany({
+      where: { ticketId: parsedTicketId },
+      orderBy: { uploadedAt: "asc" },
+    });
+
+    const result = attachments.map((att) => ({
+      id: att.id,
+      fileName: att.fileName,
+      sizeBytes: att.sizeBytes,
+      uploadedAt: att.uploadedAt.toISOString(),
+      removedAt: att.removedAt ? att.removedAt.toISOString() : null,
+      removedReason: att.removedReason,
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load attachments" });
+  }
+});
+
+// 9. GET /api/attachments/:id/download -> Download an active, owned Attachment (BR-25)
+app.get("/api/attachments/:id/download", async (req: Request, res: Response) => {
+  const requesterId = await validateRequesterHeader(req, res);
+  if (requesterId === null) return;
+
+  const parsedAttachmentId = parseInt(req.params.id, 10);
+  if (isNaN(parsedAttachmentId)) {
+    res.status(404).json({ error: "Attachment not found" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const attachment = await prisma.attachment.findUnique({
+      where: { id: parsedAttachmentId },
+      include: { ticket: true },
+    });
+
+    if (!attachment || attachment.ticket.requesterId !== requesterId || attachment.removedAt !== null) {
+      res.status(404).json({ error: "Attachment not found" });
+      return;
+    }
+
+    const filePath = path.join(uploadDir, attachment.storedFileName);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Attachment not found" });
+      return;
+    }
+
+    res.setHeader("Content-Type", attachment.mimeType);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(attachment.fileName)}"`);
+    res.sendFile(filePath);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to download attachment" });
+  }
+});
+
+// 10. DELETE /api/attachments/:id -> Soft-remove an owned Attachment (BR-24, BR-26)
+app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
+  const requesterId = await validateRequesterHeader(req, res);
+  if (requesterId === null) return;
+
+  const parsedAttachmentId = parseInt(req.params.id, 10);
+  if (isNaN(parsedAttachmentId)) {
+    res.status(404).json({ error: "Attachment not found" });
+    return;
+  }
+
+  const { reason } = req.body || {};
+  if (!reason || typeof reason !== "string" || reason.trim() === "") {
+    res.status(400).json({ error: "A removal reason is required" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const attachment = await prisma.attachment.findUnique({
+      where: { id: parsedAttachmentId },
+      include: { ticket: true },
+    });
+
+    if (!attachment || attachment.ticket.requesterId !== requesterId) {
+      res.status(404).json({ error: "Attachment not found" });
+      return;
+    }
+
+    if (attachment.removedAt !== null) {
+      res.status(409).json({ error: "Attachment has already been removed" });
+      return;
+    }
+
+    const updated = await prisma.attachment.update({
+      where: { id: parsedAttachmentId },
+      data: {
+        removedAt: new Date(),
+        removedReason: reason.trim(),
+      },
+    });
+
+    res.status(200).json({
+      id: updated.id,
+      fileName: updated.fileName,
+      removedAt: updated.removedAt!.toISOString(),
+      removedReason: updated.removedReason,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to remove attachment" });
   }
 });
 

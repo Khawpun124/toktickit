@@ -149,9 +149,9 @@ sort, and pagination (BR-10 through BR-14).
 |---|---|---|---|
 | `search` | string | none | Matches ticketNumber (partial) or summary (case-insensitive partial) |
 | `categoryId` | number | none | Exact match filter |
-| `requestedPriority` | LOW\|MEDIUM\|HIGH | none | Exact match filter |
-| `itPriority` | LOW\|MEDIUM\|HIGH | none | Exact match filter |
-| `currentStatus` | string | none | Exact match filter |
+| `requestedPriority` | LOW\|MEDIUM\|HIGH | none | Exact match filter (invalid values return 400 Bad Request) |
+| `itPriority` | LOW\|MEDIUM\|HIGH | none | Exact match filter (invalid values return 400 Bad Request) |
+| `currentStatus` | string | none | Exact match filter; allowed enum: NEW (invalid values return 400 Bad Request) |
 | `sortBy` | createdAt\|ticketNumber | createdAt | Sort field |
 | `sortDir` | asc\|desc | desc | Sort direction |
 | `page` | number | 1 | 1-indexed |
@@ -187,6 +187,10 @@ sort, and pagination (BR-10 through BR-14).
 **Errors:**
 - 401 if `X-Requester-Id` header is missing; 400 if `X-Requester-Id` format is invalid or ID is inactive (see Section 12)
 - 400 for a genuinely malformed (non-numeric) `categoryId`
+- 400 if filter parameter (`requestedPriority`, `itPriority`, `currentStatus`) contains an invalid value:
+```json
+{ "error": "Invalid requestedPriority. Allowed values: LOW, MEDIUM, HIGH" }
+```
 - 500 for unexpected server failure. Out-of-range `page`/`pageSize` never errors (BR-14) — it clamps instead.
 
 ---
