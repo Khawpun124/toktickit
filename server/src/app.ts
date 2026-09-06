@@ -252,6 +252,135 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 4 — My Tickets List
+// GET /api/tickets -> lists tickets owned by current Requester with search,
+// filters, sort, and pagination envelope (BR-10..14)
+// ---------------------------------------------------------------------------
+app.get("/api/tickets", async (req: Request, res: Response) => {
+  const requesterId = await validateRequesterHeader(req, res);
+  if (requesterId === null) return;
+
+  const {
+    search,
+    categoryId,
+    requestedPriority,
+    itPriority,
+    currentStatus,
+    sortBy,
+    sortDir,
+    page,
+    pageSize,
+  } = req.query;
+
+  const whereClause: any = {
+    requesterId,
+  };
+
+  // Category filter
+  if (categoryId !== undefined && categoryId !== "") {
+    const parsedCatId = parseInt(categoryId as string, 10);
+    if (isNaN(parsedCatId)) {
+      res.status(400).json({ error: "Invalid categoryId query parameter" });
+      return;
+    }
+    whereClause.categoryId = parsedCatId;
+  }
+
+  // Priority filters
+  if (requestedPriority && typeof requestedPriority === "string") {
+    whereClause.requestedPriority = requestedPriority;
+  }
+  if (itPriority && typeof itPriority === "string") {
+    whereClause.itPriority = itPriority;
+  }
+
+  // Current status filter
+  if (currentStatus && typeof currentStatus === "string") {
+    whereClause.currentStatus = currentStatus;
+  }
+
+  // Search filter (ticketNumber partial or summary case-insensitive partial)
+  if (search && typeof search === "string" && search.trim() !== "") {
+    const term = search.trim();
+    whereClause.OR = [
+      { ticketNumber: { contains: term, mode: "insensitive" } },
+      { summary: { contains: term, mode: "insensitive" } },
+    ];
+  }
+
+  // Sorting
+  const sortField = sortBy === "ticketNumber" ? "ticketNumber" : "createdAt";
+  const sortOrder = sortDir === "asc" ? "asc" : "desc";
+
+  const orderByClause: any[] = [
+    { [sortField]: sortOrder },
+  ];
+
+  if (sortField !== "ticketNumber") {
+    orderByClause.push({ ticketNumber: "desc" });
+  }
+
+  // Pagination (default page 1, pageSize 10, clamped 1-50)
+  let parsedPage = parseInt(page as string, 10);
+  if (isNaN(parsedPage) || parsedPage < 1) {
+    parsedPage = 1;
+  }
+
+  let parsedPageSize = parseInt(pageSize as string, 10);
+  if (isNaN(parsedPageSize) || parsedPageSize < 1 || parsedPageSize > 50) {
+    parsedPageSize = 10;
+  }
+
+  const skip = (parsedPage - 1) * parsedPageSize;
+  const take = parsedPageSize;
+
+  try {
+    const prisma = getPrisma();
+    const [totalItems, tickets] = await Promise.all([
+      prisma.ticket.count({ where: whereClause }),
+      prisma.ticket.findMany({
+        where: whereClause,
+        include: {
+          category: {
+            select: { name: true },
+          },
+        },
+        orderBy: orderByClause,
+        skip,
+        take,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(totalItems / parsedPageSize) || 0;
+
+    const data = tickets.map((t) => ({
+      id: t.id,
+      ticketNumber: t.ticketNumber,
+      summary: t.summary,
+      categoryName: t.category.name,
+      requestedPriority: t.requestedPriority,
+      itPriority: t.itPriority,
+      currentStatus: t.currentStatus,
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
+    }));
+
+    res.status(200).json({
+      data,
+      pagination: {
+        page: parsedPage,
+        pageSize: parsedPageSize,
+        totalItems,
+        totalPages,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load tickets" });
+  }
+});
+
 export default app;
+
 
 

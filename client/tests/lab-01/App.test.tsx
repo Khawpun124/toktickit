@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import React from "react";
 import App from "../../src/App.js";
 import * as api from "../../src/api.js";
@@ -28,6 +28,10 @@ describe("App", () => {
     vi.spyOn(api, "getRequesters").mockResolvedValue([mockRequester]);
     vi.spyOn(api, "getCategories").mockResolvedValue(mockCategories);
     vi.spyOn(api, "getRelatedSystems").mockResolvedValue(mockSystems);
+    vi.spyOn(api, "getTickets").mockResolvedValue({
+      data: [],
+      pagination: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 },
+    });
   });
 
   it("renders the TokTickIT heading", async () => {
@@ -50,6 +54,12 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /\+ Create Ticket/i })[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /\+ Create Ticket/i })[0]);
+
+    await waitFor(() => {
       expect(screen.getByText(/Create Support Ticket/i)).toBeInTheDocument();
     });
   });
@@ -57,6 +67,12 @@ describe("App", () => {
   it("displays category list in Create Ticket form when category fetch succeeds", async () => {
     sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
     render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /\+ Create Ticket/i })[0]).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /\+ Create Ticket/i })[0]);
 
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "Account and Access" })).toBeInTheDocument();
