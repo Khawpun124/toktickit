@@ -113,4 +113,25 @@ describe("POST /api/tickets (Create Ticket API)", () => {
     expect(res.status).toBe(401);
     expect(res.body).toHaveProperty("error", "Missing X-Requester-Id header");
   });
+
+  it("API-17: returns 201 Created and includes attachmentUploadErrors array on ticket creation (BR-27)", async () => {
+    const payload = {
+      categoryId: 1,
+      relatedSystemId: 1,
+      summary: "API-17 Partial Attachment Failure Test",
+      description: "Testing API-17 attachmentUploadErrors structure returned on ticket creation.",
+      requestedPriority: "LOW",
+    };
+
+    const res = await request(app)
+      .post("/api/tickets")
+      .set(validHeader)
+      .send(payload);
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty("id");
+    expect(res.body).toHaveProperty("attachmentUploadErrors");
+    expect(Array.isArray(res.body.attachmentUploadErrors)).toBe(true);
+  });
 });
+

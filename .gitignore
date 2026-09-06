@@ -21,3 +21,4 @@ client/.vite/
 /playwright/.cache/
 /playwright/.auth/
 server/uploads/
+test-results/

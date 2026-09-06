@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import {
   getTicket,
   getAttachments,
   uploadAttachment,
   deleteAttachment,
+  downloadAttachment,
   downloadAttachmentUrl,
   TicketDetail,
   AttachmentItem,
@@ -18,8 +20,8 @@ import {
 import { useRequester } from "../context/RequesterContext.js";
 
 interface RequesterTicketDetailScreenProps {
-  ticketId: number;
-  onBack: () => void;
+  ticketId?: number;
+  onBack?: () => void;
 }
 
 function formatFileSize(bytes: number): string {
@@ -48,6 +50,25 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   onBack,
 }) => {
   const { selectedRequester } = useRequester();
+  const params = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
+  const activeTicketId = ticketId !== undefined ? ticketId : Number(params.id);
+
+  const handleBack = () => {
+    if (onBack) onBack();
+    navigate("/tickets");
+  };
+
+  const handleUnauthorizedOrNotFound = () => {
+    if (onBack) {
+      onBack();
+    }
+    navigate("/tickets", {
+      replace: true,
+      state: { notification: "Ticket not found or access denied" },
+    });
+  };
 
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
@@ -58,6 +79,8 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string>("");
   const [uploadSuccess, setUploadSuccess] = useState<string>("");
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const downloadingRef = useRef<number | null>(null);
 
   // Soft-remove modal state
   const [removeTarget, setRemoveTarget] = useState<AttachmentItem | null>(null);
@@ -65,33 +88,57 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   const [removeReasonError, setRemoveReasonError] = useState<string>("");
   const [removing, setRemoving] = useState<boolean>(false);
 
-  const fetchTicketData = async () => {
+  const handleDownloadAttachment = async (att: AttachmentItem) => {
     if (!selectedRequester) return;
+    if (downloadingRef.current === att.id) return;
+
+    downloadingRef.current = att.id;
+    setDownloadingId(att.id);
+    setUploadError("");
+    setUploadSuccess("");
+
+    try {
+      await downloadAttachment(att.id, att.fileName, selectedRequester.id);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setUploadError(`Failed to download "${att.fileName}": ${err.message}`);
+      } else {
+        setUploadError(`Failed to download "${att.fileName}"`);
+      }
+    } finally {
+      downloadingRef.current = null;
+      setDownloadingId(null);
+    }
+  };
+
+  const fetchTicketData = async () => {
+    if (!selectedRequester || isNaN(activeTicketId) || activeTicketId <= 0) {
+      handleUnauthorizedOrNotFound();
+      return;
+    }
 
     setLoading(true);
     setError("");
 
     try {
       const [ticketData, attachmentData] = await Promise.all([
-        getTicket(ticketId, selectedRequester.id),
-        getAttachments(ticketId, selectedRequester.id),
+        getTicket(activeTicketId, selectedRequester.id),
+        getAttachments(activeTicketId, selectedRequester.id),
       ]);
       setTicket(ticketData);
       setAttachments(attachmentData);
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Unable to load ticket details");
-      }
+      handleUnauthorizedOrNotFound();
     } finally {
       setLoading(false);
     }
   };
 
+
   useEffect(() => {
     fetchTicketData();
-  }, [ticketId, selectedRequester]);
+  }, [activeTicketId, selectedRequester]);
+
 
   const activeAttachments = attachments.filter((att) => att.removedAt === null);
   const removedAttachments = attachments.filter((att) => att.removedAt !== null);
@@ -127,7 +174,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
     setUploading(true);
 
     try {
-      const newAtt = await uploadAttachment(ticketId, file, selectedRequester.id);
+      const newAtt = await uploadAttachment(activeTicketId, file, selectedRequester.id);
       setAttachments((prev) => [...prev, newAtt]);
       setUploadSuccess(`Attachment "${newAtt.fileName}" uploaded successfully.`);
       e.target.value = "";
@@ -201,7 +248,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   if (error || !ticket) {
     return (
       <div className="container py-4">
-        <button className="btn btn-outline-secondary btn-sm mb-3" onClick={onBack}>
+        <button className="btn btn-outline-secondary btn-sm mb-3" onClick={handleBack}>
           ← Back to My Tickets
         </button>
         <div className="alert alert-danger text-center my-4" role="alert">
@@ -216,7 +263,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
     <div className="container py-4">
       {/* Header Controls */}
       <div className="d-flex align-items-center justify-content-between mb-4">
-        <button className="btn btn-outline-secondary btn-sm" onClick={onBack}>
+        <button className="btn btn-outline-secondary btn-sm" onClick={handleBack}>
           ← Back to My Tickets
         </button>
         <div className="small text-muted font-monospace">{ticket.ticketNumber}</div>
@@ -379,16 +426,15 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
                   <div className="d-flex align-items-center gap-2">
                     {!isRemoved ? (
                       <>
-                        <a
-                          href={downloadAttachmentUrl(att.id)}
-                          target="_blank"
-                          rel="noreferrer"
-                          download={att.fileName}
+                        <button
+                          type="button"
                           className="btn btn-outline-primary btn-sm px-3"
                           aria-label={`Download ${att.fileName}`}
+                          onClick={() => handleDownloadAttachment(att)}
+                          disabled={downloadingId === att.id}
                         >
-                          Download
-                        </a>
+                          {downloadingId === att.id ? "Downloading..." : "Download"}
+                        </button>
                         <button
                           className="btn btn-outline-danger btn-sm px-3"
                           onClick={() => handleOpenRemoveModal(att)}

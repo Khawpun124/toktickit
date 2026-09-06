@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import {
   getTickets,
   getCategories,
@@ -9,7 +10,7 @@ import {
 import { useRequester } from "../context/RequesterContext.js";
 
 interface MyTicketsScreenProps {
-  onNavigateToCreate: () => void;
+  onNavigateToCreate?: () => void;
   onSelectTicket?: (id: number) => void;
 }
 
@@ -18,6 +19,21 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
   onSelectTicket,
 }) => {
   const { selectedRequester } = useRequester();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Notification state from redirect
+  const [notification, setNotification] = useState<string | null>(
+    (location.state as any)?.notification || null
+  );
+
+  useEffect(() => {
+    if ((location.state as any)?.notification) {
+      setNotification((location.state as any).notification);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
@@ -28,15 +44,42 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
     totalPages: 0,
   });
 
-  const [search, setSearch] = useState<string>("");
-  const [categoryId, setCategoryId] = useState<string>("");
-  const [requestedPriority, setRequestedPriority] = useState<string>("");
-  const [itPriority, setItPriority] = useState<string>("");
-  const [currentStatus, setCurrentStatus] = useState<string>("");
+  // Read initial filter/sort/search/page states from URL query parameters
+  const [search, setSearch] = useState<string>(() => searchParams.get("search") || "");
+  const [categoryId, setCategoryId] = useState<string>(() => searchParams.get("categoryId") || "");
+  const [requestedPriority, setRequestedPriority] = useState<string>(
+    () => searchParams.get("requestedPriority") || ""
+  );
+  const [itPriority, setItPriority] = useState<string>(() => searchParams.get("itPriority") || "");
+  const [currentStatus, setCurrentStatus] = useState<string>(
+    () => searchParams.get("currentStatus") || ""
+  );
 
-  const [sortBy, setSortBy] = useState<"createdAt" | "ticketNumber">("createdAt");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState<number>(1);
+  const [sortBy, setSortBy] = useState<"createdAt" | "ticketNumber">(
+    () => (searchParams.get("sortBy") as "createdAt" | "ticketNumber") || "createdAt"
+  );
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    () => (searchParams.get("sortDir") as "asc" | "desc") || "desc"
+  );
+  const [page, setPage] = useState<number>(() => {
+    const p = searchParams.get("page");
+    return p && !isNaN(Number(p)) ? Number(p) : 1;
+  });
+
+  // Sync state to URL search parameters whenever filter states update
+  useEffect(() => {
+    const params: Record<string, string> = {};
+    if (search) params.search = search;
+    if (categoryId) params.categoryId = categoryId;
+    if (requestedPriority) params.requestedPriority = requestedPriority;
+    if (itPriority) params.itPriority = itPriority;
+    if (currentStatus) params.currentStatus = currentStatus;
+    if (sortBy !== "createdAt") params.sortBy = sortBy;
+    if (sortDir !== "desc") params.sortDir = sortDir;
+    if (page > 1) params.page = page.toString();
+
+    setSearchParams(params, { replace: true });
+  }, [search, categoryId, requestedPriority, itPriority, currentStatus, sortBy, sortDir, page, setSearchParams]);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
@@ -174,6 +217,22 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
 
   return (
     <div className="container py-4">
+      {notification && (
+        <div
+          className="alert alert-warning alert-dismissible fade show mb-4"
+          role="alert"
+          data-testid="notification-banner"
+        >
+          {notification}
+          <button
+            type="button"
+            className="btn-close"
+            onClick={() => setNotification(null)}
+            aria-label="Close"
+          ></button>
+        </div>
+      )}
+
       {/* Header Row */}
       <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
         <div>
@@ -183,7 +242,10 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
           </p>
         </div>
         <button
-          onClick={onNavigateToCreate}
+          onClick={() => {
+            if (onNavigateToCreate) onNavigateToCreate();
+            navigate("/tickets/new");
+          }}
           className="btn zg-btn-primary px-4 py-2"
         >
           + Create Ticket
@@ -321,7 +383,13 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
           <p className="text-muted mb-4 small">
             Need help with hardware, software, or network access? Create your first ticket below.
           </p>
-          <button onClick={onNavigateToCreate} className="btn zg-btn-primary px-4">
+          <button
+            onClick={() => {
+              if (onNavigateToCreate) onNavigateToCreate();
+              navigate("/tickets/new");
+            }}
+            className="btn zg-btn-primary px-4"
+          >
             + Create Ticket
           </button>
         </div>
@@ -372,8 +440,11 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
                 {tickets.map((t) => (
                   <tr
                     key={t.id}
-                    onClick={() => onSelectTicket?.(t.id)}
-                    style={{ cursor: onSelectTicket ? "pointer" : "default" }}
+                    onClick={() => {
+                      if (onSelectTicket) onSelectTicket(t.id);
+                      navigate(`/tickets/${t.id}`);
+                    }}
+                    style={{ cursor: "pointer" }}
                   >
                     <td className="font-monospace fw-bold text-success">{t.ticketNumber}</td>
                     <td className="small text-muted">
@@ -400,8 +471,11 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
               <div
                 key={t.id}
                 className="zg-card p-3"
-                onClick={() => onSelectTicket?.(t.id)}
-                style={{ cursor: onSelectTicket ? "pointer" : "default" }}
+                onClick={() => {
+                  if (onSelectTicket) onSelectTicket(t.id);
+                  navigate(`/tickets/${t.id}`);
+                }}
+                style={{ cursor: "pointer" }}
               >
                 <div className="d-flex justify-content-between align-items-start mb-2">
                   <span className="font-monospace fw-bold text-success">{t.ticketNumber}</span>
