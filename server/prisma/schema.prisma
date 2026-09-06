@@ -17,6 +17,82 @@ datasource db {
 model Category {
   id        Int      @id @default(autoincrement())
   name      String   @unique
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  tickets   Ticket[]
 }
 
+
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 2 — RequesterUser and RelatedSystem
+// ---------------------------------------------------------------------------
+
+model RequesterUser {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  tickets   Ticket[]
+}
+
+model RelatedSystem {
+  id       Int      @id @default(autoincrement())
+  name     String   @unique
+  isActive Boolean  @default(true)
+  tickets  Ticket[]
+}
+
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 3 — Ticket model
+// ---------------------------------------------------------------------------
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TicketStatus {
+  NEW
+}
+
+model Ticket {
+  id                Int           @id @default(autoincrement())
+  ticketNumber      String        @unique
+  requesterId       Int
+  requester         RequesterUser @relation(fields: [requesterId], references: [id])
+  categoryId        Int
+  category          Category      @relation(fields: [categoryId], references: [id])
+  relatedSystemId   Int
+  relatedSystem     RelatedSystem @relation(fields: [relatedSystemId], references: [id])
+  summary           String
+  description       String
+  requestedPriority Priority
+  itPriority        Priority?
+  currentStatus     TicketStatus  @default(NEW)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  attachments       Attachment[]
+
+  @@index([requesterId])
+}
+
+// ---------------------------------------------------------------------------
+// Lab 2 Issue 5 — Attachment model
+// ---------------------------------------------------------------------------
+
+model Attachment {
+  id             Int       @id @default(autoincrement())
+  ticketId       Int
+  ticket         Ticket    @relation(fields: [ticketId], references: [id])
+  fileName       String
+  storedFileName String
+  mimeType       String
+  sizeBytes      Int
+  uploadedAt     DateTime  @default(now())
+  removedAt      DateTime?
+  removedReason  String?
+
+  @@index([ticketId])
+}

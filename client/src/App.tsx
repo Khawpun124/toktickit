@@ -1,70 +1,78 @@
-import { useState } from "react";
-import { checkHealth, getCategories, Category } from "./api.js";
+import React, { useState } from "react";
+import { RequesterProvider, useRequester } from "./context/RequesterContext.js";
+import { AppHeader } from "./components/AppHeader.js";
+import { RequesterSelectionScreen } from "./components/RequesterSelectionScreen.js";
+import { CreateTicketScreen } from "./components/CreateTicketScreen.js";
+import { MyTicketsScreen } from "./components/MyTicketsScreen.js";
+import { RequesterTicketDetailScreen } from "./components/RequesterTicketDetailScreen.js";
+import "./index.css";
 
-type UiState = "idle" | "loading" | "success" | "error";
+type Tab = "my-tickets" | "create-ticket";
 
-export default function App() {
-  const [state, setState] = useState<UiState>("idle");
-  const [errorMessage, setErrorMessage] = useState<string>("");
-  const [categories, setCategories] = useState<Category[]>([]);
+function MainContent({
+  activeTab,
+  onSelectTab,
+  selectedTicketId,
+  onSelectTicket,
+}: {
+  activeTab: Tab;
+  onSelectTab: (tab: Tab) => void;
+  selectedTicketId: number | null;
+  onSelectTicket: (id: number | null) => void;
+}) {
+  const { selectedRequester } = useRequester();
 
-  async function handleCheck() {
-    setState("loading");
-    setErrorMessage("");
-    setCategories([]);
-    try {
-      const res = await checkHealth();
-      if (res.status === "ok") {
-        const catList = await getCategories();
-        setCategories(catList);
-        setState("success");
-      } else {
-        setState("error");
-        setErrorMessage("Unable to connect to TokTickIT API");
-      }
-    } catch (err: unknown) {
-      setState("error");
-      if (err instanceof Error) {
-        setErrorMessage(err.message);
-      } else {
-        setErrorMessage("Unable to connect to TokTickIT API");
-      }
-    }
+  if (!selectedRequester) {
+    return <RequesterSelectionScreen />;
+  }
+
+  if (selectedTicketId !== null) {
+    return (
+      <RequesterTicketDetailScreen
+        ticketId={selectedTicketId}
+        onBack={() => onSelectTicket(null)}
+      />
+    );
+  }
+
+  if (activeTab === "create-ticket") {
+    return <CreateTicketScreen />;
   }
 
   return (
-    <div className="container py-5" style={{ maxWidth: 640 }}>
-      <h1 className="h3 mb-4">
-        TokTickIT <span className="text-success">IT Service Desk</span>
-      </h1>
-
-      <button className="btn btn-success" onClick={handleCheck} disabled={state === "loading"}>
-        {state === "loading" ? "Loading…" : "Check System"}
-      </button>
-
-      {state === "success" && (
-        <div className="alert alert-success mt-3" role="status">
-          <div>System Status: Online</div>
-          {categories.length > 0 && (
-            <div className="mt-3">
-              <div className="fw-bold mb-2">Supported Request Categories:</div>
-              <ul className="mb-0 ps-3">
-                {categories.map((cat) => (
-                  <li key={cat.id}>{cat.name}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {state === "error" && (
-        <div className="alert alert-danger mt-3" role="alert">
-          <div><strong>System Status: Offline</strong></div>
-          <div>{errorMessage || "Unable to connect to TokTickIT API"}</div>
-        </div>
-      )}
-    </div>
+    <MyTicketsScreen
+      onNavigateToCreate={() => onSelectTab("create-ticket")}
+      onSelectTicket={(id) => onSelectTicket(id)}
+    />
   );
 }
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<Tab>("my-tickets");
+  const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+
+  const handleSelectTab = (tab: Tab) => {
+    setSelectedTicketId(null);
+    setActiveTab(tab);
+  };
+
+  return (
+    <RequesterProvider>
+      <div className="min-vh-100 d-flex flex-column">
+        <AppHeader activeTab={activeTab} onSelectTab={handleSelectTab} />
+        <main className="flex-grow-1">
+          <MainContent
+            activeTab={activeTab}
+            onSelectTab={handleSelectTab}
+            selectedTicketId={selectedTicketId}
+            onSelectTicket={setSelectedTicketId}
+          />
+        </main>
+      </div>
+    </RequesterProvider>
+  );
+}
+
+
+
 
