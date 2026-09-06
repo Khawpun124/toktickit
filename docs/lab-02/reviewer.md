@@ -20,7 +20,7 @@
 | Issue 4: My Tickets List | `feature/4-my-tickets` | [PR #<4>](<https://github.com/Khawpun124/toktickit/pull/24>) | Approved after fixes |
 | Issue 5: Requester Ticket Detail + Attachments | `feature/5-ticket-detail-attachments` | [PR #<5>](<https://github.com/Khawpun124/toktickit/pull/25>) | Approved after fixes |
 | Issue 6: E2E + Visual/Responsive Testing | `feature/6-e2e-visual-tests` | [PR #<6>](<https://github.com/Khawpun124/toktickit/pull/26>) | Approved after fixes |
-| Issue 7: Post-MVP fixes — attachment wiring, routing, download header, and README update | `feature/7-post-mvp-fixes` | [PR #<6>](<https://github.com/Khawpun124/toktickit/pull/29>) | Approved after fixes |
+| Issue 7: Post-MVP fixes — attachment wiring, routing, download header, and README update | `feature/7-post-mvp-fixes` | [PR #<7>](<https://github.com/Khawpun124/toktickit/pull/29>) | Approved after fixes |
 
 ## Detailed Peer Reviews Received from Partner
 
