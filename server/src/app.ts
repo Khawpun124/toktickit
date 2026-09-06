@@ -641,7 +641,10 @@ app.get("/api/attachments/:id/download", async (req: Request, res: Response) => 
     }
 
     res.setHeader("Content-Type", attachment.mimeType);
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(attachment.fileName)}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(attachment.fileName)}"; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`
+    );
     res.sendFile(filePath);
   } catch (error) {
     res.status(500).json({ error: "Unable to download attachment" });

@@ -148,11 +148,12 @@ test.describe.serial("TokTickIT Lab 2 - Requester Ticket Flow & Visual Verificat
     const apiJson = await apiRes.json();
     expect(apiJson.error).toMatch(/Ticket not found|not found/i);
 
-    // Direct browser URL access attempt to backend API (returns 401 or 404 without auth header)
-    const pageRes = await page.goto(`http://localhost:3000/api/tickets/${ticketIdToTest}`);
-    expect([401, 404]).toContain(pageRes?.status());
-    const content = await page.content();
-    expect(content).toMatch(/Ticket not found|error|Missing X-Requester-Id/i);
+    // Direct browser URL access attempt on Frontend App (/tickets/:id)
+    await page.goto(`/tickets/${ticketIdToTest}`);
+
+    // Verify Route-Level Access Denied / Ticket Not Found redirects to /tickets with notification banner (AC-03, BR-10)
+    await expect(page).toHaveURL(/\/tickets$/);
+    await expect(page.getByText(/Ticket not found or access denied/i)).toBeVisible();
   });
 
   test("E2E-03: Open Ticket Detail -> Add Attachment -> Soft-remove Attachment with Reason (AC-05, AC-08)", async ({
@@ -194,7 +195,7 @@ test.describe.serial("TokTickIT Lab 2 - Requester Ticket Flow & Visual Verificat
 
     // Verify Attachment appears as active (exact match on file name div)
     await expect(page.getByText("test-sample.jpg", { exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Download test-sample.jpg/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Download test-sample.jpg/i })).toBeVisible();
 
     // Take Ticket Detail Screenshot with attachment
     await page.screenshot({
@@ -212,10 +213,10 @@ test.describe.serial("TokTickIT Lab 2 - Requester Ticket Flow & Visual Verificat
       .fill("E2E test soft removal with reason");
     await page.getByRole("button", { name: /Confirm Removal/i }).click();
 
-    // Verify metadata reflects soft removal and download link is disabled/removed
+    // Verify metadata reflects soft removal and download button is disabled/removed
     await expect(page.getByText(/E2E test soft removal with reason/i).first()).toBeVisible();
     await expect(page.getByText("Removed").first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /Download test-sample.jpg/i })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: /Download test-sample.jpg/i })).not.toBeVisible();
 
     // Cleanup temp test file
     if (fs.existsSync(testFilePath)) {

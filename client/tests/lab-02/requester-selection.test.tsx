@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
+import { MemoryRouter } from "react-router-dom";
 import App from "../../src/App.js";
 import { RequesterSelectionScreen } from "../../src/components/RequesterSelectionScreen.js";
 import { RequesterProvider } from "../../src/context/RequesterContext.js";
@@ -31,9 +32,11 @@ describe("RequesterSelectionScreen and Context (UI-01, UI-02)", () => {
     vi.spyOn(api, "getRequesters").mockResolvedValue(mockRequesters);
 
     render(
-      <RequesterProvider>
-        <RequesterSelectionScreen />
-      </RequesterProvider>
+      <MemoryRouter>
+        <RequesterProvider>
+          <RequesterSelectionScreen />
+        </RequesterProvider>
+      </MemoryRouter>
     );
 
     expect(screen.getByText(/Loading requesters.../i)).toBeInTheDocument();

@@ -329,6 +329,50 @@ export function downloadAttachmentUrl(attachmentId: number): string {
   return `${API_URL}/api/attachments/${attachmentId}/download`;
 }
 
+// Issue 5 — Download attachment with authentication header (X-Requester-Id)
+export async function downloadAttachment(
+  attachmentId: number,
+  fileName: string,
+  requesterId: number
+): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/attachments/${attachmentId}/download`, {
+      headers: {
+        "X-Requester-Id": requesterId.toString(),
+      },
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    let errorMessage = "Unable to download attachment";
+    try {
+      const data = await res.json();
+      if (data && data.error) {
+        errorMessage = data.error;
+      }
+    } catch {
+      // JSON parse error fallback
+    }
+    throw new Error(errorMessage);
+  }
+
+  const blob = await res.blob();
+  const createUrl = window.URL?.createObjectURL || (() => "blob:mock");
+  const revokeUrl = window.URL?.revokeObjectURL || (() => {});
+  const url = createUrl(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  revokeUrl(url);
+}
+
+
 // Issue 5 — Soft-remove attachment
 export async function deleteAttachment(
   attachmentId: number,

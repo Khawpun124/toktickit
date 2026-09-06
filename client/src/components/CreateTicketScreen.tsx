@@ -1,16 +1,32 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getCategories,
   getRelatedSystems,
   createTicket,
+  uploadAttachment,
   Category,
   RelatedSystem,
   Ticket,
 } from "../api.js";
+import {
+  ALLOWED_ATTACHMENT_MIME_TYPES,
+  ALLOWED_ATTACHMENT_EXTENSIONS,
+  MAX_ATTACHMENT_SIZE_BYTES,
+  MAX_ACTIVE_ATTACHMENTS,
+} from "../constants.js";
 import { useRequester } from "../context/RequesterContext.js";
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export const CreateTicketScreen: React.FC = () => {
   const { selectedRequester } = useRequester();
+  const navigate = useNavigate();
+
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [relatedSystems, setRelatedSystems] = useState<RelatedSystem[]>([]);
@@ -20,6 +36,13 @@ export const CreateTicketScreen: React.FC = () => {
   const [requestedPriority, setRequestedPriority] = useState<"LOW" | "MEDIUM" | "HIGH">("MEDIUM");
   const [summary, setSummary] = useState<string>("");
   const [description, setDescription] = useState<string>("");
+
+  // Attachments state
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string>("");
+  const [attachmentUploadErrors, setAttachmentUploadErrors] = useState<
+    Array<{ fileName: string; reason: string }>
+  >([]);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [createdTicket, setCreatedTicket] = useState<Ticket | null>(null);
@@ -60,10 +83,54 @@ export const CreateTicketScreen: React.FC = () => {
     loadReferenceData();
   }, []);
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setAttachmentError("");
+
+    // Check file count limit (BR-23)
+    if (selectedFiles.length + files.length > MAX_ACTIVE_ATTACHMENTS) {
+      setAttachmentError("A ticket may have at most 5 active attachments");
+      e.target.value = "";
+      return;
+    }
+
+    // Validate each selected file (BR-21, BR-22)
+    for (const file of files) {
+      const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+      const isValidType =
+        ALLOWED_ATTACHMENT_MIME_TYPES.includes(file.type) ||
+        ALLOWED_ATTACHMENT_EXTENSIONS.includes(ext);
+
+      if (!isValidType) {
+        setAttachmentError("Only JPG, PNG, WEBP, and PDF files are allowed");
+        e.target.value = "";
+        return;
+      }
+
+      if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        setAttachmentError("File exceeds the 5 MB limit");
+        e.target.value = "";
+        return;
+      }
+    }
+
+    setSelectedFiles((prev) => [...prev, ...files]);
+    e.target.value = "";
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setAttachmentError("");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFieldErrors({});
     setGeneralError("");
+    setAttachmentError("");
+    setAttachmentUploadErrors([]);
 
     // Client-side validation for Summary (min 5 chars) per BR-15, AC-04, UI-03
     const trimmedSummary = summary.trim();
@@ -93,6 +160,21 @@ export const CreateTicketScreen: React.FC = () => {
         },
         selectedRequester.id
       );
+
+      // Upload selected files sequentially (AC-05, BR-27)
+      const uploadErrors: Array<{ fileName: string; reason: string }> = [];
+      if (selectedFiles.length > 0) {
+        for (const file of selectedFiles) {
+          try {
+            await uploadAttachment(ticket.id, file, selectedRequester.id);
+          } catch (err: unknown) {
+            const reason = err instanceof Error ? err.message : "Failed to upload attachment";
+            uploadErrors.push({ fileName: file.name, reason });
+          }
+        }
+      }
+
+      setAttachmentUploadErrors(uploadErrors);
       setCreatedTicket(ticket);
     } catch (err: any) {
       if (err?.fields) {
@@ -111,6 +193,9 @@ export const CreateTicketScreen: React.FC = () => {
     setCreatedTicket(null);
     setSummary("");
     setDescription("");
+    setSelectedFiles([]);
+    setAttachmentError("");
+    setAttachmentUploadErrors([]);
     setFieldErrors({});
     setGeneralError("");
   };
@@ -130,6 +215,22 @@ export const CreateTicketScreen: React.FC = () => {
             </p>
           </div>
 
+          {attachmentUploadErrors.length > 0 && (
+            <div className="alert alert-warning mb-4" role="alert">
+              <div className="fw-bold mb-1">⚠️ Attachment Warning (BR-27)</div>
+              <div className="small mb-2">
+                The ticket was created, but the following attachment(s) failed to upload:
+              </div>
+              <ul className="mb-0 small ps-3">
+                {attachmentUploadErrors.map((err, idx) => (
+                  <li key={idx}>
+                    <strong>{err.fileName}</strong>: {err.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="border rounded p-3 mb-4 bg-light">
             <div className="row g-2 small">
               <div className="col-sm-6">
@@ -145,6 +246,12 @@ export const CreateTicketScreen: React.FC = () => {
           </div>
 
           <div className="d-flex justify-content-center gap-3">
+            <button
+              onClick={() => navigate(`/tickets/${createdTicket.id}`)}
+              className="btn btn-outline-success px-4 py-2"
+            >
+              View Ticket Details
+            </button>
             <button
               onClick={handleCreateAnother}
               className="btn zg-btn-primary px-4 py-2"
@@ -340,13 +447,72 @@ export const CreateTicketScreen: React.FC = () => {
             )}
           </div>
 
-          {/* Attachments Section UI Stub (Issue 3) */}
-          {/* Attachment upload implemented in Issue 5 */}
-          <div className="border rounded p-3 mb-4 bg-light">
-            <div className="fw-medium text-muted mb-1">📎 Attachments</div>
-            <div className="small text-muted">
-              Attachment upload zone (Attachment upload implemented in Issue 5)
+          {/* Attachments Section */}
+          <div className="zg-card p-3 mb-4 bg-light border">
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <label htmlFor="attachmentFileInput" className="form-label fw-medium mb-0">
+                📎 Attachments ({selectedFiles.length}/{MAX_ACTIVE_ATTACHMENTS})
+              </label>
+              <label
+                className={`btn btn-sm zg-btn-primary ${
+                  selectedFiles.length >= MAX_ACTIVE_ATTACHMENTS || isSubmitting ? "disabled" : ""
+                }`}
+                style={{
+                  cursor:
+                    selectedFiles.length >= MAX_ACTIVE_ATTACHMENTS || isSubmitting
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                + Add File
+                <input
+                  id="attachmentFileInput"
+                  type="file"
+                  className="d-none"
+                  onChange={handleFileSelect}
+                  disabled={selectedFiles.length >= MAX_ACTIVE_ATTACHMENTS || isSubmitting}
+                  accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
+                  aria-label="Upload Attachment"
+                  multiple
+                />
+              </label>
             </div>
+
+            <p className="small text-muted mb-2">
+              Allowed formats: JPG, PNG, WEBP, PDF (max 5 MB per file, max 5 attachments).
+            </p>
+
+            {attachmentError && (
+              <div className="alert alert-danger py-2 mb-2 small" role="alert">
+                {attachmentError}
+              </div>
+            )}
+
+            {selectedFiles.length > 0 && (
+              <div className="d-flex flex-column gap-2 mt-2">
+                {selectedFiles.map((file, idx) => (
+                  <div
+                    key={`${file.name}-${idx}`}
+                    className="d-flex align-items-center justify-content-between p-2 bg-white rounded border small"
+                  >
+                    <div className="d-flex align-items-center gap-2 text-truncate me-2">
+                      <span>📄</span>
+                      <span className="fw-medium text-truncate">{file.name}</span>
+                      <span className="text-muted">({formatFileSize(file.size)})</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger btn-sm py-0 px-2"
+                      onClick={() => handleRemoveFile(idx)}
+                      disabled={isSubmitting}
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Form Actions */}
@@ -357,6 +523,9 @@ export const CreateTicketScreen: React.FC = () => {
               onClick={() => {
                 setSummary("");
                 setDescription("");
+                setSelectedFiles([]);
+                setAttachmentError("");
+                setAttachmentUploadErrors([]);
                 setFieldErrors({});
                 setGeneralError("");
               }}
@@ -377,3 +546,5 @@ export const CreateTicketScreen: React.FC = () => {
     </div>
   );
 };
+
+
