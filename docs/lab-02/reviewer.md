@@ -20,6 +20,7 @@
 | Issue 4: My Tickets List | `feature/4-my-tickets` | [PR #<4>](<https://github.com/Khawpun124/toktickit/pull/24>) | Approved after fixes |
 | Issue 5: Requester Ticket Detail + Attachments | `feature/5-ticket-detail-attachments` | [PR #<5>](<https://github.com/Khawpun124/toktickit/pull/25>) | Approved after fixes |
 | Issue 6: E2E + Visual/Responsive Testing | `feature/6-e2e-visual-tests` | [PR #<6>](<https://github.com/Khawpun124/toktickit/pull/26>) | Approved after fixes |
+| Issue 7: Post-MVP fixes — attachment wiring, routing, download header, and README update | `feature/7-post-mvp-fixes` | [PR #<6>](<https://github.com/Khawpun124/toktickit/pull/29>) | Approved after fixes |
 
 ## Detailed Peer Reviews Received from Partner
 
@@ -120,6 +121,28 @@ and screenshot references. Added a new E2E-02 test case using
 URL, confirming access is denied. Removed both leftover scaffolding
 files; E2E tests continue to run locally via `npx playwright test`
 (not yet wired into CI by design, to keep CI scope focused for now).
+
+### Issue 7: Post-MVP fixes — attachment wiring, routing, download header, and README update- #29
+
+**Reviewer Comment:**
+1. [UX/Security Alignment] เช็คสิทธิ์เจ้าของ Ticket ก่อนโหลดหน้ารายละเอียด (AC-03)
+2. [UI Bug/State] ป้องกันการกดปุ่ม Download ซ้ำซ้อน (Double Click Race Condition)
+
+**My Response:** All Important and Minor items addressed:
+Important:
+1. Ownership check — RequesterTicketDetailScreen now catches 403/404 
+   from GET /api/tickets/:id and redirects to /tickets with a toast 
+   notification instead of showing a broken/loading state.
+2. Download race condition — download button is now disabled while 
+   downloadingId matches, preventing duplicate concurrent requests.
+Minor:
+3. Added Content-Disposition: attachment header to the download 
+   endpoint so browsers force-download instead of previewing.
+4. Verified and aligned ALLOWED_ATTACHMENT_MIME_TYPES / 
+   MAX_ATTACHMENT_SIZE_BYTES between client and server constants.
+5. My Tickets search/filters/sort/page now sync to URL query 
+   parameters via useSearchParams, so Back navigation from Ticket 
+   Detail preserves the previous filter state.
 
 ## 2. Pull Requests I Reviewed for My Partner
 
