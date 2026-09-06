@@ -324,6 +324,7 @@ ticket ID belongs to a different Requester (AC-03).
 ```json
 { "reason": "Uploaded wrong file" }
 ```
+`reason` is required, trimmed, minimum 1 and maximum 500 characters (BR-32).
 
 **Response 200:**
 ```json
@@ -338,6 +339,7 @@ ticket ID belongs to a different Requester (AC-03).
 **Errors:**
 - 401 if `X-Requester-Id` header is missing; 400 if `X-Requester-Id` format is invalid or ID is inactive (see Section 12)
 - 400 missing reason — `{ "error": "A removal reason is required" }`
+- 400 reason exceeds 500 characters — `{ "error": "Removal reason must not exceed 500 characters" }`
 - 404 not found / not owned — `{ "error": "Attachment not found" }`
 - 409 already removed — `{ "error": "Attachment has already been removed" }`
 

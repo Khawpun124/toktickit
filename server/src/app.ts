@@ -5,6 +5,7 @@ import fs from "fs";
 import crypto from "crypto";
 import multer from "multer";
 import { getPrisma } from "./prisma.js";
+import { AttachmentConstants } from "./constants.js";
 
 const uploadDir = path.resolve(process.cwd(), "uploads/attachments");
 if (!fs.existsSync(uploadDir)) {
@@ -471,26 +472,30 @@ app.get("/api/tickets/:id", async (req: Request, res: Response) => {
 });
 
 // 7. POST /api/tickets/:id/attachments -> Upload an Attachment to an owned Ticket (BR-21, BR-22, BR-23, BR-26)
-app.post("/api/tickets/:id/attachments", (req: Request, res: Response) => {
-  upload.single("file")(req, res, async (err: any) => {
-    const requesterId = await validateRequesterHeader(req, res);
-    if (requesterId === null) return;
+app.post("/api/tickets/:id/attachments", async (req: Request, res: Response) => {
+  // Pre-check 1: Validate Requester Header BEFORE multer parses or writes file to disk
+  const requesterId = await validateRequesterHeader(req, res);
+  if (requesterId === null) return;
 
-    const parsedTicketId = parseInt(req.params.id, 10);
-    if (isNaN(parsedTicketId)) {
-      res.status(404).json({ error: "Ticket not found" });
-      return;
-    }
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  // Pre-check 2: Validate Ticket Existence & Ownership BEFORE multer parses or writes file to disk
+  const prisma = getPrisma();
+  const preCheckTicket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+  if (!preCheckTicket || preCheckTicket.requesterId !== requesterId) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  // Proceed with multer upload middleware
+  upload.single("file")(req, res, async (err: any) => {
+    let success = false;
 
     try {
-      const prisma = getPrisma();
-      const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
-      if (!ticket || ticket.requesterId !== requesterId) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        res.status(404).json({ error: "Ticket not found" });
-        return;
-      }
-
       const file = req.file;
       if (!file) {
         res.status(400).json({ error: "No file uploaded" });
@@ -498,43 +503,46 @@ app.post("/api/tickets/:id/attachments", (req: Request, res: Response) => {
       }
 
       // Validate type (BR-21): JPG/JPEG, PNG, WEBP, PDF
-      const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
       const ext = path.extname(file.originalname).toLowerCase();
-      const allowedExts = [".jpg", ".jpeg", ".png", ".webp", ".pdf"];
-
-      if (!allowedMimeTypes.includes(file.mimetype) || !allowedExts.includes(ext)) {
-        if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      if (
+        !AttachmentConstants.ALLOWED_MIME_TYPES.includes(file.mimetype) ||
+        !AttachmentConstants.ALLOWED_EXTENSIONS.includes(ext)
+      ) {
         res.status(400).json({ error: "Only JPG, PNG, WEBP, and PDF files are allowed" });
         return;
       }
 
       // Validate size (BR-22): 5MB
-      if (file.size > 5 * 1024 * 1024 || err?.code === "LIMIT_FILE_SIZE") {
-        if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      if (file.size > AttachmentConstants.MAX_SIZE_BYTES || err?.code === "LIMIT_FILE_SIZE") {
         res.status(400).json({ error: "File exceeds the 5 MB limit" });
         return;
       }
 
-      // Validate count limit (BR-23): max 5 active attachments
-      const activeCount = await prisma.attachment.count({
-        where: { ticketId: parsedTicketId, removedAt: null },
+      // Atomic Transaction with Row Locking (SELECT FOR UPDATE) to prevent race conditions on BR-23 5-active limit
+      const attachment = await prisma.$transaction(async (tx) => {
+        // Acquire row lock on the ticket to serialize concurrent uploads for the same ticket
+        await tx.$executeRaw`SELECT id FROM "Ticket" WHERE id = ${parsedTicketId} FOR UPDATE`;
+
+        const activeCount = await tx.attachment.count({
+          where: { ticketId: parsedTicketId, removedAt: null },
+        });
+
+        if (activeCount >= AttachmentConstants.MAX_ACTIVE_ATTACHMENTS) {
+          throw new Error("A ticket may have at most 5 active attachments");
+        }
+
+        return await tx.attachment.create({
+          data: {
+            ticketId: parsedTicketId,
+            fileName: file.originalname,
+            storedFileName: file.filename,
+            mimeType: file.mimetype,
+            sizeBytes: file.size,
+          },
+        });
       });
 
-      if (activeCount >= 5) {
-        if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-        res.status(400).json({ error: "A ticket may have at most 5 active attachments" });
-        return;
-      }
-
-      const attachment = await prisma.attachment.create({
-        data: {
-          ticketId: parsedTicketId,
-          fileName: file.originalname,
-          storedFileName: file.filename,
-          mimeType: file.mimetype,
-          sizeBytes: file.size,
-        },
-      });
+      success = true;
 
       res.status(201).json({
         id: attachment.id,
@@ -545,9 +553,21 @@ app.post("/api/tickets/:id/attachments", (req: Request, res: Response) => {
         uploadedAt: attachment.uploadedAt.toISOString(),
         removedAt: null,
       });
-    } catch (error) {
-      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      res.status(500).json({ error: "Unable to upload attachment" });
+    } catch (error: any) {
+      if (error?.message === "A ticket may have at most 5 active attachments") {
+        res.status(400).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: "Unable to upload attachment" });
+      }
+    } finally {
+      // Safety net: If upload did not result in a successful 201 creation, guarantee file cleanup
+      if (!success && req.file?.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch {
+          // Ignore unlink errors if file was already removed
+        }
+      }
     }
   });
 });
@@ -640,8 +660,14 @@ app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
   }
 
   const { reason } = req.body || {};
-  if (!reason || typeof reason !== "string" || reason.trim() === "") {
+  const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+  if (!trimmedReason) {
     res.status(400).json({ error: "A removal reason is required" });
+    return;
+  }
+
+  if (trimmedReason.length > AttachmentConstants.MAX_REMOVAL_REASON_LENGTH) {
+    res.status(400).json({ error: "Removal reason must not exceed 500 characters" });
     return;
   }
 

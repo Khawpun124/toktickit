@@ -144,6 +144,7 @@ manage their own tickets and attachments — never anyone else's.
 - BR-27: If Ticket creation succeeds but an attached file's upload fails, the Ticket
   is still saved; the user is informed which specific file(s) failed and may retry
   adding attachments afterward from Ticket Detail.
+- BR-32: Attachment removal reason is required, trimmed, minimum 1 and maximum 500 characters.
 
 ### Inactive Requesters
 - BR-28: An inactive Development Requester cannot be selected, and any ticket data

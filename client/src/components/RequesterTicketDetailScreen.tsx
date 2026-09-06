@@ -8,6 +8,13 @@ import {
   TicketDetail,
   AttachmentItem,
 } from "../api.js";
+import {
+  ALLOWED_ATTACHMENT_MIME_TYPES,
+  ALLOWED_ATTACHMENT_EXTENSIONS,
+  MAX_ATTACHMENT_SIZE_BYTES,
+  MAX_ACTIVE_ATTACHMENTS,
+  MAX_REMOVAL_REASON_LENGTH,
+} from "../constants.js";
 import { useRequester } from "../context/RequesterContext.js";
 
 interface RequesterTicketDetailScreenProps {
@@ -97,23 +104,21 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
     setUploadSuccess("");
 
     // Client-side Validation (BR-21, BR-22, BR-23)
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
     const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
-    const allowedExts = [".jpg", ".jpeg", ".png", ".webp", ".pdf"];
 
-    if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
+    if (!ALLOWED_ATTACHMENT_MIME_TYPES.includes(file.type) && !ALLOWED_ATTACHMENT_EXTENSIONS.includes(ext)) {
       setUploadError("Only JPG, PNG, WEBP, and PDF files are allowed");
       e.target.value = "";
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
       setUploadError("File exceeds the 5 MB limit");
       e.target.value = "";
       return;
     }
 
-    if (activeAttachments.length >= 5) {
+    if (activeAttachments.length >= MAX_ACTIVE_ATTACHMENTS) {
       setUploadError("A ticket may have at most 5 active attachments");
       e.target.value = "";
       return;
@@ -146,8 +151,14 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   const handleConfirmRemove = async () => {
     if (!removeTarget || !selectedRequester) return;
 
-    if (!removeReason.trim()) {
+    const trimmed = removeReason.trim();
+    if (!trimmed) {
       setRemoveReasonError("A removal reason is required");
+      return;
+    }
+
+    if (trimmed.length > MAX_REMOVAL_REASON_LENGTH) {
+      setRemoveReasonError("Removal reason must not exceed 500 characters");
       return;
     }
 
@@ -432,6 +443,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
                     id="removeReasonInput"
                     className={`form-control form-control-sm ${removeReasonError ? "is-invalid" : ""}`}
                     rows={3}
+                    maxLength={MAX_REMOVAL_REASON_LENGTH}
                     placeholder="Enter reason for removing this attachment..."
                     value={removeReason}
                     onChange={(e) => setRemoveReason(e.target.value)}

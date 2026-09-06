@@ -166,4 +166,76 @@ describe("Attachment API (API-10 through API-15)", () => {
     expect(deleteRes.status).toBe(404);
     expect(deleteRes.body.error).toBe("Attachment not found");
   });
+
+  it("cleans up uploaded disk file when ownership check or validation fails", async () => {
+    const uploadDir = path.resolve(process.cwd(), "uploads/attachments");
+    const initialFiles = fs.existsSync(uploadDir) ? fs.readdirSync(uploadDir) : [];
+
+    // Attempt upload to ticket owned by Requester 2 using Requester 1 header
+    const res = await request(app)
+      .post(`/api/tickets/${ticket2Id}/attachments`)
+      .set("X-Requester-Id", "1")
+      .attach("file", Buffer.from("unowned-file-content"), "unowned.png");
+
+    expect(res.status).toBe(404);
+
+    const currentFiles = fs.existsSync(uploadDir) ? fs.readdirSync(uploadDir) : [];
+    expect(currentFiles.length).toBe(initialFiles.length);
+  });
+
+  it("handles 2 concurrent upload requests atomically when 4 active attachments exist (race condition test)", async () => {
+    for (let i = 1; i <= 4; i++) {
+      await prisma.attachment.create({
+        data: {
+          ticketId: ticket1Id,
+          fileName: `file${i}.png`,
+          storedFileName: `stored_${i}.png`,
+          mimeType: "image/png",
+          sizeBytes: 100,
+        },
+      });
+    }
+
+    const req1 = request(app)
+      .post(`/api/tickets/${ticket1Id}/attachments`)
+      .set("X-Requester-Id", "1")
+      .attach("file", Buffer.from("concurrent-file-1"), "concurrent1.png");
+
+    const req2 = request(app)
+      .post(`/api/tickets/${ticket1Id}/attachments`)
+      .set("X-Requester-Id", "1")
+      .attach("file", Buffer.from("concurrent-file-2"), "concurrent2.png");
+
+    const [res1, res2] = await Promise.all([req1, req2]);
+    const statuses = [res1.status, res2.status].sort();
+
+    // Exactly one should succeed (201) and one should be rejected (400)
+    expect(statuses).toEqual([201, 400]);
+
+    const activeCount = await prisma.attachment.count({
+      where: { ticketId: ticket1Id, removedAt: null },
+    });
+    expect(activeCount).toBe(5);
+  });
+
+  it("returns 400 when removalReason exceeds 500 characters (BR-32)", async () => {
+    const att = await prisma.attachment.create({
+      data: {
+        ticketId: ticket1Id,
+        fileName: "long-reason.pdf",
+        storedFileName: "stored_long_reason.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 200,
+      },
+    });
+
+    const longReason = "a".repeat(501);
+    const res = await request(app)
+      .delete(`/api/attachments/${att.id}`)
+      .set("X-Requester-Id", "1")
+      .send({ reason: longReason });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/must not exceed 500 characters/i);
+  });
 });
