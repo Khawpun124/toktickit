@@ -170,5 +170,32 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("prevents double-clicking download button by locking download requests synchronously", async () => {
+    vi.spyOn(api, "getAttachments").mockResolvedValue([activeAttachment]);
+    // Prolong download to test race condition lock
+    const downloadSpy = vi.spyOn(api, "downloadAttachment").mockImplementation(
+      () => new Promise((resolve) => setTimeout(resolve, 500))
+    );
+
+    render(
+      <MemoryRouter>
+        <RequesterProvider>
+          <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("battery_report.pdf")).toBeInTheDocument();
+    });
+
+    const downloadBtn = screen.getByRole("button", { name: /Download battery_report.pdf/i });
+    // Rapid double click
+    fireEvent.click(downloadBtn);
+    fireEvent.click(downloadBtn);
+
+    expect(downloadSpy).toHaveBeenCalledTimes(1);
+  });
 });
 

@@ -151,8 +151,9 @@ test.describe.serial("TokTickIT Lab 2 - Requester Ticket Flow & Visual Verificat
     // Direct browser URL access attempt on Frontend App (/tickets/:id)
     await page.goto(`/tickets/${ticketIdToTest}`);
 
-    // Verify Route-Level Access Denied / Ticket Not Found UI is rendered on screen (AC-03, BR-10)
-    await expect(page.getByText("Ticket Not Found", { exact: true })).toBeVisible();
+    // Verify Route-Level Access Denied / Ticket Not Found redirects to /tickets with notification banner (AC-03, BR-10)
+    await expect(page).toHaveURL(/\/tickets$/);
+    await expect(page.getByText(/Ticket not found or access denied/i)).toBeVisible();
   });
 
   test("E2E-03: Open Ticket Detail -> Add Attachment -> Soft-remove Attachment with Reason (AC-05, AC-08)", async ({

@@ -61,4 +61,22 @@ describe("RequesterTicketDetailScreen (UI-10)", () => {
     expect(screen.queryByRole("textbox", { name: /description/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /category/i })).not.toBeInTheDocument();
   });
+
+  it("redirects to /tickets with notification when getTicket returns 403 or 404 (AC-03 ownership check)", async () => {
+    const error403 = new Error("Access denied") as any;
+    error403.status = 403;
+    vi.spyOn(api, "getTicket").mockRejectedValue(error403);
+
+    render(
+      <MemoryRouter initialEntries={["/tickets/101"]}>
+        <RequesterProvider>
+          <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(api.getTicket).toHaveBeenCalledWith(101, 1);
+    });
+  });
 });

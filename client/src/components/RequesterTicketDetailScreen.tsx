@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   getTicket,
@@ -60,6 +60,16 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
     navigate("/tickets");
   };
 
+  const handleUnauthorizedOrNotFound = () => {
+    if (onBack) {
+      onBack();
+    }
+    navigate("/tickets", {
+      replace: true,
+      state: { notification: "Ticket not found or access denied" },
+    });
+  };
+
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -70,6 +80,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   const [uploadError, setUploadError] = useState<string>("");
   const [uploadSuccess, setUploadSuccess] = useState<string>("");
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const downloadingRef = useRef<number | null>(null);
 
   // Soft-remove modal state
   const [removeTarget, setRemoveTarget] = useState<AttachmentItem | null>(null);
@@ -79,10 +90,12 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
 
   const handleDownloadAttachment = async (att: AttachmentItem) => {
     if (!selectedRequester) return;
+    if (downloadingRef.current === att.id) return;
 
+    downloadingRef.current = att.id;
+    setDownloadingId(att.id);
     setUploadError("");
     setUploadSuccess("");
-    setDownloadingId(att.id);
 
     try {
       await downloadAttachment(att.id, att.fileName, selectedRequester.id);
@@ -93,13 +106,16 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
         setUploadError(`Failed to download "${att.fileName}"`);
       }
     } finally {
+      downloadingRef.current = null;
       setDownloadingId(null);
     }
   };
 
-
   const fetchTicketData = async () => {
-    if (!selectedRequester || isNaN(activeTicketId)) return;
+    if (!selectedRequester || isNaN(activeTicketId) || activeTicketId <= 0) {
+      handleUnauthorizedOrNotFound();
+      return;
+    }
 
     setLoading(true);
     setError("");
@@ -112,15 +128,12 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
       setTicket(ticketData);
       setAttachments(attachmentData);
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Unable to load ticket details");
-      }
+      handleUnauthorizedOrNotFound();
     } finally {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     fetchTicketData();
