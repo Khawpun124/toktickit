@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getRequesters, RequesterUser } from "../api.js";
 import { useRequester } from "../context/RequesterContext.js";
 
@@ -6,6 +7,7 @@ type UiState = "loading" | "success" | "error" | "empty";
 
 export const RequesterSelectionScreen: React.FC = () => {
   const { setSelectedRequester } = useRequester();
+  const navigate = useNavigate();
   const [requesters, setRequesters] = useState<RequesterUser[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [state, setState] = useState<UiState>("loading");
@@ -43,8 +45,10 @@ export const RequesterSelectionScreen: React.FC = () => {
     const req = requesters.find((r) => r.id.toString() === selectedId);
     if (req) {
       setSelectedRequester(req);
+      navigate("/tickets");
     }
   };
+
 
   return (
     <div className="container py-5 d-flex justify-content-center">

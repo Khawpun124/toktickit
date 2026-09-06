@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getTickets,
   getCategories,
@@ -9,7 +10,7 @@ import {
 import { useRequester } from "../context/RequesterContext.js";
 
 interface MyTicketsScreenProps {
-  onNavigateToCreate: () => void;
+  onNavigateToCreate?: () => void;
   onSelectTicket?: (id: number) => void;
 }
 
@@ -18,6 +19,8 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
   onSelectTicket,
 }) => {
   const { selectedRequester } = useRequester();
+  const navigate = useNavigate();
+
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
@@ -183,7 +186,10 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
           </p>
         </div>
         <button
-          onClick={onNavigateToCreate}
+          onClick={() => {
+            if (onNavigateToCreate) onNavigateToCreate();
+            navigate("/tickets/new");
+          }}
           className="btn zg-btn-primary px-4 py-2"
         >
           + Create Ticket
@@ -321,7 +327,13 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
           <p className="text-muted mb-4 small">
             Need help with hardware, software, or network access? Create your first ticket below.
           </p>
-          <button onClick={onNavigateToCreate} className="btn zg-btn-primary px-4">
+          <button
+            onClick={() => {
+              if (onNavigateToCreate) onNavigateToCreate();
+              navigate("/tickets/new");
+            }}
+            className="btn zg-btn-primary px-4"
+          >
             + Create Ticket
           </button>
         </div>
@@ -372,8 +384,11 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
                 {tickets.map((t) => (
                   <tr
                     key={t.id}
-                    onClick={() => onSelectTicket?.(t.id)}
-                    style={{ cursor: onSelectTicket ? "pointer" : "default" }}
+                    onClick={() => {
+                      if (onSelectTicket) onSelectTicket(t.id);
+                      navigate(`/tickets/${t.id}`);
+                    }}
+                    style={{ cursor: "pointer" }}
                   >
                     <td className="font-monospace fw-bold text-success">{t.ticketNumber}</td>
                     <td className="small text-muted">
@@ -400,8 +415,11 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
               <div
                 key={t.id}
                 className="zg-card p-3"
-                onClick={() => onSelectTicket?.(t.id)}
-                style={{ cursor: onSelectTicket ? "pointer" : "default" }}
+                onClick={() => {
+                  if (onSelectTicket) onSelectTicket(t.id);
+                  navigate(`/tickets/${t.id}`);
+                }}
+                style={{ cursor: "pointer" }}
               >
                 <div className="d-flex justify-content-between align-items-start mb-2">
                   <span className="font-monospace fw-bold text-success">{t.ticketNumber}</span>

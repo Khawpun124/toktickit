@@ -1,4 +1,5 @@
 import React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useRequester } from "../context/RequesterContext.js";
 
 interface AppHeaderProps {
@@ -8,6 +9,30 @@ interface AppHeaderProps {
 
 export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) => {
   const { selectedRequester, clearRequester } = useRequester();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const currentTab =
+    activeTab || (location.pathname === "/tickets/new" ? "create-ticket" : "my-tickets");
+
+  const handleNavMyTickets = () => {
+    if (onSelectTab) {
+      onSelectTab("my-tickets");
+    }
+    navigate("/tickets");
+  };
+
+  const handleNavCreateTicket = () => {
+    if (onSelectTab) {
+      onSelectTab("create-ticket");
+    }
+    navigate("/tickets/new");
+  };
+
+  const handleClearRequester = () => {
+    clearRequester();
+    navigate("/");
+  };
 
   return (
     <header className="zg-header shadow-sm py-2 px-3">
@@ -18,12 +43,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
             <span className="badge bg-light text-dark font-weight-normal small">IT Service Desk</span>
           </div>
 
-          {selectedRequester && onSelectTab && (
+          {selectedRequester && (
             <nav className="d-flex gap-2">
               <button
-                onClick={() => onSelectTab("my-tickets")}
+                onClick={handleNavMyTickets}
                 className={`btn btn-sm ${
-                  activeTab === "my-tickets"
+                  currentTab === "my-tickets"
                     ? "btn-light fw-bold text-success"
                     : "btn-outline-light"
                 }`}
@@ -31,9 +56,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
                 My Tickets
               </button>
               <button
-                onClick={() => onSelectTab("create-ticket")}
+                onClick={handleNavCreateTicket}
                 className={`btn btn-sm ${
-                  activeTab === "create-ticket"
+                  currentTab === "create-ticket"
                     ? "btn-light fw-bold text-success"
                     : "btn-outline-light"
                 }`}
@@ -53,7 +78,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
               </div>
             </div>
             <button
-              onClick={clearRequester}
+              onClick={handleClearRequester}
               className="btn btn-sm btn-outline-light"
               aria-label="Change Requester"
             >
@@ -65,4 +90,5 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
     </header>
   );
 };
+
 

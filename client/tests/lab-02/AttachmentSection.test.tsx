@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
+import { MemoryRouter } from "react-router-dom";
 import { RequesterTicketDetailScreen } from "../../src/components/RequesterTicketDetailScreen.js";
 import { RequesterProvider } from "../../src/context/RequesterContext.js";
 import * as api from "../../src/api.js";
@@ -53,9 +54,11 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
     });
 
     render(
-      <RequesterProvider>
-        <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
-      </RequesterProvider>
+      <MemoryRouter>
+        <RequesterProvider>
+          <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
     );
 
     await waitFor(() => {
@@ -83,7 +86,7 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
       expect(screen.getByText("Removed")).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("link", { name: /Download battery_report.pdf/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Download battery_report.pdf/i })).not.toBeInTheDocument();
   });
 
   it("UI-12: rejects oversized file selection client-side before upload attempt (AC-06)", async () => {
@@ -91,9 +94,11 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
     const uploadSpy = vi.spyOn(api, "uploadAttachment");
 
     render(
-      <RequesterProvider>
-        <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
-      </RequesterProvider>
+      <MemoryRouter>
+        <RequesterProvider>
+          <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
     );
 
     await waitFor(() => {
@@ -115,4 +120,55 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
     // Verify upload API was NOT called
     expect(uploadSpy).not.toHaveBeenCalled();
   });
+
+  it("downloads attachment with X-Requester-Id header when clicking Download button", async () => {
+    vi.spyOn(api, "getAttachments").mockResolvedValue([activeAttachment]);
+    const downloadSpy = vi.spyOn(api, "downloadAttachment").mockResolvedValue(undefined);
+
+    render(
+      <MemoryRouter>
+        <RequesterProvider>
+          <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("battery_report.pdf")).toBeInTheDocument();
+    });
+
+    const downloadBtn = screen.getByRole("button", { name: /Download battery_report.pdf/i });
+    fireEvent.click(downloadBtn);
+
+    await waitFor(() => {
+      expect(downloadSpy).toHaveBeenCalledWith(501, "battery_report.pdf", 1);
+    });
+  });
+
+  it("handles attachment download error gracefully and displays safe error message", async () => {
+    vi.spyOn(api, "getAttachments").mockResolvedValue([activeAttachment]);
+    vi.spyOn(api, "downloadAttachment").mockRejectedValue(new Error("Attachment not found"));
+
+    render(
+      <MemoryRouter>
+        <RequesterProvider>
+          <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("battery_report.pdf")).toBeInTheDocument();
+    });
+
+    const downloadBtn = screen.getByRole("button", { name: /Download battery_report.pdf/i });
+    fireEvent.click(downloadBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Failed to download "battery_report.pdf": Attachment not found/i)
+      ).toBeInTheDocument();
+    });
+  });
 });
+

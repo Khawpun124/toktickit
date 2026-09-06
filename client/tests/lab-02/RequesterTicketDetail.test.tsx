@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import React from "react";
+import { MemoryRouter } from "react-router-dom";
 import { RequesterTicketDetailScreen } from "../../src/components/RequesterTicketDetailScreen.js";
 import { RequesterProvider } from "../../src/context/RequesterContext.js";
 import * as api from "../../src/api.js";
@@ -37,9 +38,11 @@ describe("RequesterTicketDetailScreen (UI-10)", () => {
 
   it("UI-10: renders all ticket header fields as read-only without edit controls (FR-12, BR-30)", async () => {
     render(
-      <RequesterProvider>
-        <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
-      </RequesterProvider>
+      <MemoryRouter>
+        <RequesterProvider>
+          <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
     );
 
     await waitFor(() => {

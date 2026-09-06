@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
+import { MemoryRouter } from "react-router-dom";
 import App from "../../src/App.js";
 import { MyTicketsScreen } from "../../src/components/MyTicketsScreen.js";
 import { RequesterProvider } from "../../src/context/RequesterContext.js";
 import * as api from "../../src/api.js";
+
 
 describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
   const mockRequesterA: api.RequesterUser = {
@@ -40,9 +42,11 @@ describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
     });
 
     render(
-      <RequesterProvider>
-        <MyTicketsScreen onNavigateToCreate={() => {}} />
-      </RequesterProvider>
+      <MemoryRouter>
+        <RequesterProvider>
+          <MyTicketsScreen onNavigateToCreate={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
     );
 
     await waitFor(() => {
@@ -84,9 +88,11 @@ describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
     });
 
     render(
-      <RequesterProvider>
-        <MyTicketsScreen onNavigateToCreate={() => {}} />
-      </RequesterProvider>
+      <MemoryRouter>
+        <RequesterProvider>
+          <MyTicketsScreen onNavigateToCreate={() => {}} />
+        </RequesterProvider>
+      </MemoryRouter>
     );
 
     await waitFor(() => {

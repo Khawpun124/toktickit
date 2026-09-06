@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { RequesterProvider, useRequester } from "./context/RequesterContext.js";
 import { AppHeader } from "./components/AppHeader.js";
 import { RequesterSelectionScreen } from "./components/RequesterSelectionScreen.js";
@@ -7,71 +8,71 @@ import { MyTicketsScreen } from "./components/MyTicketsScreen.js";
 import { RequesterTicketDetailScreen } from "./components/RequesterTicketDetailScreen.js";
 import "./index.css";
 
-type Tab = "my-tickets" | "create-ticket";
-
-function MainContent({
-  activeTab,
-  onSelectTab,
-  selectedTicketId,
-  onSelectTicket,
-}: {
-  activeTab: Tab;
-  onSelectTab: (tab: Tab) => void;
-  selectedTicketId: number | null;
-  onSelectTicket: (id: number | null) => void;
-}) {
+function RequireRequester({ children }: { children: JSX.Element }) {
   const { selectedRequester } = useRequester();
-
   if (!selectedRequester) {
-    return <RequesterSelectionScreen />;
+    return <Navigate to="/" replace />;
   }
+  return children;
+}
 
-  if (selectedTicketId !== null) {
-    return (
-      <RequesterTicketDetailScreen
-        ticketId={selectedTicketId}
-        onBack={() => onSelectTicket(null)}
-      />
-    );
+function SelectionRoute() {
+  const { selectedRequester } = useRequester();
+  if (selectedRequester) {
+    return <Navigate to="/tickets" replace />;
   }
+  return <RequesterSelectionScreen />;
+}
 
-  if (activeTab === "create-ticket") {
-    return <CreateTicketScreen />;
-  }
-
+export function AppContent() {
   return (
-    <MyTicketsScreen
-      onNavigateToCreate={() => onSelectTab("create-ticket")}
-      onSelectTicket={(id) => onSelectTicket(id)}
-    />
+    <div className="min-vh-100 d-flex flex-column">
+      <AppHeader />
+      <main className="flex-grow-1">
+        <Routes>
+          <Route path="/" element={<SelectionRoute />} />
+          <Route path="/select-requester" element={<Navigate to="/" replace />} />
+          <Route
+            path="/tickets"
+            element={
+              <RequireRequester>
+                <MyTicketsScreen />
+              </RequireRequester>
+            }
+          />
+          <Route
+            path="/tickets/new"
+            element={
+              <RequireRequester>
+                <CreateTicketScreen />
+              </RequireRequester>
+            }
+          />
+          <Route
+            path="/tickets/:id"
+            element={
+              <RequireRequester>
+                <RequesterTicketDetailScreen />
+              </RequireRequester>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </div>
   );
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("my-tickets");
-  const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
-
-  const handleSelectTab = (tab: Tab) => {
-    setSelectedTicketId(null);
-    setActiveTab(tab);
-  };
-
   return (
     <RequesterProvider>
-      <div className="min-vh-100 d-flex flex-column">
-        <AppHeader activeTab={activeTab} onSelectTab={handleSelectTab} />
-        <main className="flex-grow-1">
-          <MainContent
-            activeTab={activeTab}
-            onSelectTab={handleSelectTab}
-            selectedTicketId={selectedTicketId}
-            onSelectTicket={setSelectedTicketId}
-          />
-        </main>
-      </div>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
     </RequesterProvider>
   );
 }
+
 
 
 
