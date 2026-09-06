@@ -1,0 +1,179 @@
+import { test, expect, Page } from "@playwright/test";
+import path from "path";
+import fs from "fs";
+
+async function selectRequester(page: Page, optionLabel: string) {
+  const selectHeading = page.getByText(/Select Development Requester/i);
+  if (await selectHeading.isVisible()) {
+    await expect(page.getByText(/Loading requesters/i)).not.toBeVisible({ timeout: 10000 });
+    const select = page.locator("#requesterSelect");
+    await select.waitFor({ state: "visible" });
+    await select.selectOption({ label: optionLabel });
+    await page.getByRole("button", { name: /Continue/i }).click();
+  }
+}
+
+test.describe.serial("TokTickIT Lab 2 - Requester Ticket Flow & Visual Verification", () => {
+  let createdTicketNumber = "";
+
+  test.beforeAll(() => {
+    // Ensure screenshot directories exist
+    const dirs = [
+      path.resolve(process.cwd(), "artifacts/lab-02/screenshots/create-ticket"),
+      path.resolve(process.cwd(), "artifacts/lab-02/screenshots/my-tickets"),
+      path.resolve(process.cwd(), "artifacts/lab-02/screenshots/ticket-detail"),
+    ];
+
+    dirs.forEach((dir) => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    });
+  });
+
+  test("E2E-01: Select Requester -> Create Ticket -> Find in My Tickets (AC-01, AC-13)", async ({
+    page,
+  }, testInfo) => {
+    const projectName = testInfo.project.name;
+
+    await page.goto("/");
+
+    // Step 1: Select Development Requester
+    await selectRequester(page, "Jennifer Anderson (jennifer.anderson@example.com)");
+
+    // Step 2: Navigate to Create Ticket
+    await page.getByRole("button", { name: /\+ Create Ticket/i }).first().click();
+
+    // Take Create Ticket Screenshot
+    await page.screenshot({
+      path: `artifacts/lab-02/screenshots/create-ticket/create-ticket-${projectName}.png`,
+      fullPage: true,
+    });
+
+    // Step 3: Fill Create Ticket Form
+    const uniqueSummary = `E2E Test Ticket - ${Date.now()}`;
+    await page.locator("#summaryInput").fill(uniqueSummary);
+    await page
+      .locator("#descriptionInput")
+      .fill("This is an automated Playwright E2E test description for verifying ticket creation.");
+    await page.locator("#categorySelect").selectOption({ index: 0 });
+    await page.locator("#relatedSystemSelect").selectOption({ index: 0 });
+    await page.locator("#prioritySelect").selectOption("HIGH");
+
+    // Submit Form
+    await page.getByRole("button", { name: /Submit Ticket/i }).click();
+
+    // Verify Success alert containing Ticket Number (e.g. TKT-2026-XXXXXX)
+    const successAlert = page.getByText(/Ticket Created Successfully/i);
+    await expect(successAlert).toBeVisible();
+
+    const ticketNumberElement = page.locator(".font-monospace").first();
+    createdTicketNumber = (await ticketNumberElement.textContent())?.trim() || "";
+    expect(createdTicketNumber).toMatch(/TKT-\d{4}-\d{6}/);
+
+    // Step 4: Navigate to My Tickets Screen
+    await page.getByRole("button", { name: /My Tickets/i }).first().click();
+
+    // Take My Tickets Screenshot
+    await page.screenshot({
+      path: `artifacts/lab-02/screenshots/my-tickets/my-tickets-${projectName}.png`,
+      fullPage: true,
+    });
+
+    // Verify created ticket appears in My Tickets list
+    await expect(page.getByText(createdTicketNumber).first()).toBeVisible();
+    await expect(page.getByText(uniqueSummary).first()).toBeVisible();
+  });
+
+  test("E2E-02: Switch Requester identity -> Verify ticket access separation (AC-03, BR-10)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // Ensure Requester 1 is active initially
+    await selectRequester(page, "Jennifer Anderson (jennifer.anderson@example.com)");
+
+    // Click Change Requester
+    await page.getByRole("button", { name: /Change Requester/i }).click();
+    await expect(page.getByText(/Select Development Requester/i)).toBeVisible();
+
+    // Select Requester 2 (Michael Brown)
+    await selectRequester(page, "Michael Brown (michael.brown@example.com)");
+
+    // My Tickets should reload for Requester 2
+    await page.waitForTimeout(500);
+
+    // Verify Requester 1's created ticket number is NOT visible under Requester 2
+    if (createdTicketNumber) {
+      await expect(page.getByText(createdTicketNumber)).not.toBeVisible();
+    }
+  });
+
+  test("E2E-03: Open Ticket Detail -> Add Attachment -> Soft-remove Attachment with Reason (AC-05, AC-08)", async ({
+    page,
+  }, testInfo) => {
+    const projectName = testInfo.project.name;
+
+    await page.goto("/");
+
+    // Switch back to Requester 1 (Jennifer Anderson)
+    if (await page.getByText(/Select Development Requester/i).isVisible()) {
+      await selectRequester(page, "Jennifer Anderson (jennifer.anderson@example.com)");
+    } else {
+      const currentRequester = await page.locator("header").textContent();
+      if (!currentRequester?.includes("Jennifer Anderson")) {
+        await page.getByRole("button", { name: /Change Requester/i }).click();
+        await selectRequester(page, "Jennifer Anderson (jennifer.anderson@example.com)");
+      }
+    }
+
+    // Go to My Tickets list
+    await page.getByRole("button", { name: /My Tickets/i }).first().click();
+
+    // Open created ticket detail
+    await expect(page.getByText(createdTicketNumber).first()).toBeVisible();
+    await page.getByText(createdTicketNumber).first().click();
+
+    // Verify Ticket Detail view is rendered
+    await expect(page.getByText(/Attachments/i).first()).toBeVisible();
+
+    // Prepare temporary test image file
+    const testFilePath = path.resolve(process.cwd(), "e2e/test-sample.jpg");
+    fs.writeFileSync(testFilePath, Buffer.from("fake-jpg-image-data"));
+
+    // Upload attachment
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles(testFilePath);
+
+    // Verify Attachment appears as active
+    await expect(page.getByText("test-sample.jpg")).toBeVisible();
+    await expect(page.getByRole("link", { name: /Download test-sample.jpg/i })).toBeVisible();
+
+    // Take Ticket Detail Screenshot with attachment
+    await page.screenshot({
+      path: `artifacts/lab-02/screenshots/ticket-detail/ticket-detail-${projectName}.png`,
+      fullPage: true,
+    });
+
+    // Soft-remove Attachment
+    await page.getByRole("button", { name: /Remove/i }).first().click();
+
+    // Modal should appear
+    await expect(page.getByText(/Remove Attachment/i)).toBeVisible();
+    await page
+      .locator("#removeReasonInput")
+      .fill("E2E test soft removal with reason");
+    await page.getByRole("button", { name: /Confirm Removal/i }).click();
+
+    // Verify metadata reflects soft removal and download link is disabled/removed
+    await expect(page.getByText(/E2E test soft removal with reason/i)).toBeVisible();
+    await expect(page.getByText("Removed").first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Download test-sample.jpg/i })).not.toBeVisible();
+
+    // Cleanup temp test file
+    if (fs.existsSync(testFilePath)) {
+      fs.unlinkSync(testFilePath);
+    }
+  });
+});
+
