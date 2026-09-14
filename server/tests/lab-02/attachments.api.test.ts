@@ -9,17 +9,30 @@ describe("Attachment API (API-10 through API-15)", () => {
   const prisma = getPrisma();
   let ticket1Id: number;
   let ticket2Id: number;
+  let req1Id: number;
+  let req2Id: number;
 
   beforeEach(async () => {
-    await prisma.attachment.deleteMany({ where: { ticket: { requesterId: { in: [1, 2] } } } });
-    await prisma.ticket.deleteMany({ where: { requesterId: { in: [1, 2] } } });
+    const requesters = await prisma.user.findMany({
+      where: { role: "REQUESTER", isActive: true },
+      orderBy: { id: "asc" },
+      take: 2,
+    });
+    if (requesters.length < 1) {
+      throw new Error("No active REQUESTER user found");
+    }
+    req1Id = requesters[0].id;
+    req2Id = requesters[1] ? requesters[1].id : requesters[0].id;
+
+    await prisma.attachment.deleteMany({ where: { ticket: { requesterId: { in: [req1Id, req2Id] } } } });
+    await prisma.ticket.deleteMany({ where: { requesterId: { in: [req1Id, req2Id] } } });
 
     const prefix = `TKT-ATT-${Date.now()}`;
 
     const t1 = await prisma.ticket.create({
       data: {
         ticketNumber: `${prefix}-001`,
-        requesterId: 1,
+        requesterId: req1Id,
         categoryId: 1,
         relatedSystemId: 1,
         summary: "Attachment test ticket for Requester 1",
@@ -32,7 +45,7 @@ describe("Attachment API (API-10 through API-15)", () => {
     const t2 = await prisma.ticket.create({
       data: {
         ticketNumber: `${prefix}-002`,
-        requesterId: 2,
+        requesterId: req2Id,
         categoryId: 1,
         relatedSystemId: 1,
         summary: "Attachment test ticket for Requester 2",
@@ -54,7 +67,7 @@ describe("Attachment API (API-10 through API-15)", () => {
   it("API-10: uploads valid JPG under 5MB (AC-05, BR-21)", async () => {
     const res = await request(app)
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("fake-jpg-content"), "test-image.jpg");
 
     expect(res.status).toBe(201);
@@ -67,7 +80,7 @@ describe("Attachment API (API-10 through API-15)", () => {
     const largeBuffer = Buffer.alloc(6 * 1024 * 1024);
     const res = await request(app)
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .attach("file", largeBuffer, "large.pdf");
 
     expect(res.status).toBe(400);
@@ -77,7 +90,7 @@ describe("Attachment API (API-10 through API-15)", () => {
   it("API-12: rejects unsupported file type .docx (BR-21)", async () => {
     const res = await request(app)
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("docx-content"), "document.docx");
 
     expect(res.status).toBe(400);
@@ -99,7 +112,7 @@ describe("Attachment API (API-10 through API-15)", () => {
 
     const res = await request(app)
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("image6-content"), "file6.png");
 
     expect(res.status).toBe(400);
@@ -119,7 +132,7 @@ describe("Attachment API (API-10 through API-15)", () => {
 
     const deleteRes = await request(app)
       .delete(`/api/attachments/${att.id}`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .send({ reason: "Uploaded wrong document" });
 
     expect(deleteRes.status).toBe(200);
@@ -130,7 +143,7 @@ describe("Attachment API (API-10 through API-15)", () => {
     // List attachments should still show metadata
     const listRes = await request(app)
       .get(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", "1");
+      .set("X-Requester-Id", req1Id.toString());
 
     expect(listRes.status).toBe(200);
     const removedItem = listRes.body.find((a: any) => a.id === att.id);
@@ -141,7 +154,7 @@ describe("Attachment API (API-10 through API-15)", () => {
     // Download attempt on soft-removed attachment must return 404 (BR-25)
     const downloadRes = await request(app)
       .get(`/api/attachments/${att.id}/download`)
-      .set("X-Requester-Id", "1");
+      .set("X-Requester-Id", req1Id.toString());
 
     expect(downloadRes.status).toBe(404);
     expect(downloadRes.body.error).toBe("Attachment not found");
@@ -160,7 +173,7 @@ describe("Attachment API (API-10 through API-15)", () => {
 
     const deleteRes = await request(app)
       .delete(`/api/attachments/${att2.id}`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .send({ reason: "Trying to remove other requester file" });
 
     expect(deleteRes.status).toBe(404);
@@ -174,7 +187,7 @@ describe("Attachment API (API-10 through API-15)", () => {
     // Attempt upload to ticket owned by Requester 2 using Requester 1 header
     const res = await request(app)
       .post(`/api/tickets/${ticket2Id}/attachments`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("unowned-file-content"), "unowned.png");
 
     expect(res.status).toBe(404);
@@ -198,12 +211,12 @@ describe("Attachment API (API-10 through API-15)", () => {
 
     const req1 = request(app)
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("concurrent-file-1"), "concurrent1.png");
 
     const req2 = request(app)
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("concurrent-file-2"), "concurrent2.png");
 
     const [res1, res2] = await Promise.all([req1, req2]);
@@ -232,7 +245,7 @@ describe("Attachment API (API-10 through API-15)", () => {
     const longReason = "a".repeat(501);
     const res = await request(app)
       .delete(`/api/attachments/${att.id}`)
-      .set("X-Requester-Id", "1")
+      .set("X-Requester-Id", req1Id.toString())
       .send({ reason: longReason });
 
     expect(res.status).toBe(400);

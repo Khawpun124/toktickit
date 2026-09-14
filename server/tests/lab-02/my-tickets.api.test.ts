@@ -6,17 +6,30 @@ import { getPrisma } from "../../src/prisma.js";
 describe("GET /api/tickets (My Tickets API)", () => {
   const prisma = getPrisma();
   let createdTicketIds: number[] = [];
+  let req3Id: number;
+  let req4Id: number;
 
   beforeEach(async () => {
     createdTicketIds = [];
-    await prisma.ticket.deleteMany({ where: { requesterId: { in: [3, 4] } } });
+    const requesters = await prisma.user.findMany({
+      where: { role: "REQUESTER", isActive: true },
+      orderBy: { id: "asc" },
+      take: 4,
+    });
+    if (requesters.length < 1) {
+      throw new Error("No active REQUESTER user found");
+    }
+    req3Id = requesters[2] ? requesters[2].id : requesters[0].id;
+    req4Id = requesters[3] ? requesters[3].id : (requesters[1] ? requesters[1].id : requesters[0].id);
+
+    await prisma.ticket.deleteMany({ where: { requesterId: { in: [req3Id, req4Id] } } });
     const prefix = `TKT-TEST-${Date.now()}`;
 
     // Create tickets for Requester 3
     const t1 = await prisma.ticket.create({
       data: {
         ticketNumber: `${prefix}-001`,
-        requesterId: 3,
+        requesterId: req3Id,
         categoryId: 1,
         relatedSystemId: 1,
         summary: "Laptop battery issues",
@@ -30,7 +43,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
     const t2 = await prisma.ticket.create({
       data: {
         ticketNumber: `${prefix}-002`,
-        requesterId: 3,
+        requesterId: req3Id,
         categoryId: 2,
         relatedSystemId: 1,
         summary: "Wi-Fi connection drops",
@@ -45,7 +58,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
     const t3 = await prisma.ticket.create({
       data: {
         ticketNumber: `${prefix}-003`,
-        requesterId: 4,
+        requesterId: req4Id,
         categoryId: 1,
         relatedSystemId: 1,
         summary: "Password reset needed",
@@ -70,7 +83,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
   it("API-06: returns tickets scoped only to the specified Requester (AC-13, BR-10)", async () => {
     const res = await request(app)
       .get("/api/tickets")
-      .set("X-Requester-Id", "3");
+      .set("X-Requester-Id", req3Id.toString());
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("data");
@@ -86,7 +99,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
   it("API-07: applies combined filters (Category + Status) with AND logic (BR-12)", async () => {
     const res = await request(app)
       .get("/api/tickets?categoryId=2&currentStatus=NEW")
-      .set("X-Requester-Id", "3");
+      .set("X-Requester-Id", req3Id.toString());
 
     expect(res.status).toBe(200);
     expect(res.body.pagination.totalItems).toBe(1);
@@ -96,7 +109,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
   it("API-08: sorts results by createdAt descending by default with ticketNumber desc tiebreaker (BR-13)", async () => {
     const res = await request(app)
       .get("/api/tickets")
-      .set("X-Requester-Id", "3");
+      .set("X-Requester-Id", req3Id.toString());
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(2);
@@ -109,7 +122,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
   it("API-09: falls back to default page size when out-of-range page parameter is supplied (BR-14)", async () => {
     const res = await request(app)
       .get("/api/tickets?pageSize=999&page=-5")
-      .set("X-Requester-Id", "3");
+      .set("X-Requester-Id", req3Id.toString());
 
     expect(res.status).toBe(200);
     expect(res.body.pagination.page).toBe(1);
@@ -119,7 +132,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
   it("returns 400 when requestedPriority query parameter is invalid", async () => {
     const res = await request(app)
       .get("/api/tickets?requestedPriority=INVALID")
-      .set("X-Requester-Id", "3");
+      .set("X-Requester-Id", req3Id.toString());
 
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty("error");
@@ -129,7 +142,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
   it("returns 400 when currentStatus query parameter is invalid", async () => {
     const res = await request(app)
       .get("/api/tickets?currentStatus=NOT_A_REAL_STATUS")
-      .set("X-Requester-Id", "3");
+      .set("X-Requester-Id", req3Id.toString());
 
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty("error");
@@ -139,7 +152,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
   it("filters tickets correctly when valid requestedPriority is supplied (regression check)", async () => {
     const res = await request(app)
       .get("/api/tickets?requestedPriority=HIGH")
-      .set("X-Requester-Id", "3");
+      .set("X-Requester-Id", req3Id.toString());
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);

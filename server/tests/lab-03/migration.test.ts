@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { getPrisma } from "../../src/prisma.js";
 import { runUserMigration, MIGRATED_DEFAULT_PASSWORD } from "../../src/utils/migrate-users.js";
 import { comparePassword } from "../../src/utils/password.js";
@@ -6,53 +6,25 @@ import { comparePassword } from "../../src/utils/password.js";
 describe("Migration Tests (MIG-01, MIG-02, BR-23, BR-24, AC-16)", () => {
   const prisma = getPrisma();
   let testEmail: string;
-  let createdReqUserId: number;
 
   beforeEach(async () => {
     testEmail = `mig-${Date.now()}-${Math.random().toString(36).substring(7)}@example.com`;
 
-    // Create a RequesterUser row
-    const reqUser = await prisma.requesterUser.create({
+    // Create a isolated RequesterUser row fixture
+    await prisma.requesterUser.create({
       data: {
         name: "Migrated User Test",
         email: testEmail,
         isActive: true,
       },
     });
-    createdReqUserId = reqUser.id;
-
-    // Create a Ticket pointing to this requesterId
-    // Note: Ticket.requesterId now references User(id), so we create User first or via migration
-    const defaultPasswordHash = await comparePassword("dummy", "dummy") ? "" : "$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeg6Lruj3vjPGga31lW";
-    const initialUser = await prisma.user.create({
-      data: {
-        id: reqUser.id,
-        name: reqUser.name,
-        email: reqUser.email,
-        passwordHash: defaultPasswordHash,
-        role: "REQUESTER",
-        isActive: true,
-        mustChangePassword: true,
-      },
-    }).catch(() => null);
-
-    const targetUserId = initialUser ? initialUser.id : reqUser.id;
-
-    const ticketNumber = `TKT-MIG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    await prisma.ticket.create({
-      data: {
-        ticketNumber,
-        requesterId: targetUserId,
-        categoryId: 1,
-        relatedSystemId: 1,
-        summary: `Migration Ticket Ownership Test ${testEmail}`,
-        description: "Testing ticket requester relation after migration",
-        requestedPriority: "LOW",
-        currentStatus: "NEW",
-      },
-    });
   });
 
+  afterEach(async () => {
+    await prisma.ticket.deleteMany({ where: { summary: { contains: testEmail } } });
+    await prisma.user.deleteMany({ where: { email: testEmail } });
+    await prisma.requesterUser.deleteMany({ where: { email: testEmail } });
+  });
 
   it("MIG-01: Converts RequesterUser records to User model with role REQUESTER and hashed initial password (BR-23)", async () => {
     const result = await runUserMigration(prisma);
@@ -78,11 +50,25 @@ describe("Migration Tests (MIG-01, MIG-02, BR-23, BR-24, AC-16)", () => {
     });
     expect(user).not.toBeNull();
 
+    // Create a ticket for this migrated user to test relationship
+    const ticketNumber = `TKT-MIG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    await prisma.ticket.create({
+      data: {
+        ticketNumber,
+        requesterId: user!.id,
+        categoryId: 1,
+        relatedSystemId: 1,
+        summary: `Migration Ticket Ownership Test ${testEmail}`,
+        description: "Testing ticket requester relation after migration",
+        requestedPriority: "LOW",
+        currentStatus: "NEW",
+      },
+    });
+
     const tickets = await prisma.ticket.findMany({
       where: { summary: `Migration Ticket Ownership Test ${testEmail}` },
       include: { requester: true },
     });
-
 
     expect(tickets.length).toBeGreaterThan(0);
     for (const t of tickets) {

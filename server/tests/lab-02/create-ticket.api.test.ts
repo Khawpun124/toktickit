@@ -1,10 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
 
 describe("POST /api/tickets (Create Ticket API)", () => {
-  const validHeader = { "X-Requester-Id": "1" };
+  const prisma = getPrisma();
+  let requesterUser: any;
+  let validHeader: Record<string, string>;
+
+  beforeAll(async () => {
+    requesterUser = await prisma.user.findFirst({
+      where: { role: "REQUESTER", isActive: true },
+      orderBy: { id: "asc" },
+    });
+    if (!requesterUser) {
+      throw new Error("No active REQUESTER user found in database");
+    }
+    validHeader = { "X-Requester-Id": requesterUser.id.toString() };
+  });
 
   it("API-01: creates a ticket with valid data and returns 201 with unique ticket number (AC-01, BR-01, BR-02)", async () => {
     const payload = {
@@ -24,7 +37,7 @@ describe("POST /api/tickets (Create Ticket API)", () => {
     expect(res.body).toHaveProperty("id");
     expect(res.body).toHaveProperty("ticketNumber");
     expect(res.body.ticketNumber).toMatch(/^TKT-\d{4}-\d{6}$/);
-    expect(res.body.requesterId).toBe(1);
+    expect(res.body.requesterId).toBe(requesterUser.id);
     expect(res.body.categoryId).toBe(1);
     expect(res.body.relatedSystemId).toBe(1);
     expect(res.body.summary).toBe("Cannot access network drive");
