@@ -401,5 +401,109 @@ export async function deleteAttachment(
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Lab 3 Issue 2 — Authentication API
+// ---------------------------------------------------------------------------
+
+export type UserRole = "REQUESTER" | "IT_STAFF" | "ADMINISTRATOR";
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  mustChangePassword: boolean;
+}
+
+export interface PasswordRuleResults {
+  minLength: boolean;
+  hasUpperLower: boolean;
+  hasNumber: boolean;
+  hasSpecialChar: boolean;
+}
+
+export async function login(email: string, password: string): Promise<AuthUser> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Invalid email or password. Please try again.");
+  }
+
+  return data;
+}
+
+export async function logout(): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Logout failed");
+  }
+}
+
+export async function getMe(): Promise<AuthUser> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/me`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    throw new Error("Unauthenticated");
+  }
+
+  return await res.json();
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<{ success: boolean; mustChangePassword: boolean }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/change-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err: any = new Error(data.error || "Password change failed");
+    err.rules = data.rules;
+    throw err;
+  }
+
+  return data;
+}
+
+
 
 

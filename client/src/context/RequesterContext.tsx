@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { RequesterUser } from "../api.js";
+import { useAuth } from "./AuthContext.js";
 
 interface RequesterContextType {
   selectedRequester: RequesterUser | null;
@@ -47,8 +48,23 @@ export const RequesterProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 export const useRequester = (): RequesterContextType => {
   const context = useContext(RequesterContext);
-  if (!context) {
-    throw new Error("useRequester must be used within a RequesterProvider");
+  if (context) {
+    return context;
   }
-  return context;
+  try {
+    const auth = useAuth();
+    if (auth.user) {
+      return {
+        selectedRequester: { id: auth.user.id, name: auth.user.name, email: auth.user.email },
+        setSelectedRequester: () => {},
+        clearRequester: auth.logout,
+      };
+    }
+  } catch {}
+  return {
+    selectedRequester: null,
+    setSelectedRequester: () => {},
+    clearRequester: () => {},
+  };
 };
+

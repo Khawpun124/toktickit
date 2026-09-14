@@ -4,8 +4,20 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import multer from "multer";
+import cookieParser from "cookie-parser";
 import { getPrisma } from "./prisma.js";
 import { AttachmentConstants } from "./constants.js";
+import {
+  attachUserSession,
+  requireAuth,
+  SESSION_COOKIE_NAME,
+  SESSION_LIFETIME_MS,
+} from "./middleware/auth.js";
+import {
+  comparePassword,
+  hashPassword,
+  validatePasswordRules,
+} from "./utils/password.js";
 
 const uploadDir = path.resolve(process.cwd(), "uploads/attachments");
 if (!fs.existsSync(uploadDir)) {
@@ -36,8 +48,11 @@ void getPrisma;
 // Supertest can import `app` without opening a port. Do not merge these files.
 export const app = express();
 
-app.use(cors());          // already wired: lets the Vite dev server call this API
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
+app.use(attachUserSession);
+
 
 // ---------------------------------------------------------------------------
 // Issue 2 — API health check
@@ -129,9 +144,170 @@ app.get("/api/related-systems", async (_req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// Helper: Validate X-Requester-Id Header (Section 12 of api-spec.md)
+// Lab 3 Issue 2 — Authentication Endpoints
+// ---------------------------------------------------------------------------
+
+// 1. POST /api/auth/login (BR-01, BR-05)
+app.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body ?? {};
+    if (!email || typeof email !== "string" || !password || typeof password !== "string") {
+      res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+
+    // BR-05: Generic error for wrong password, unknown email, or inactive account
+    if (!user || !user.isActive) {
+      res.status(401).json({ error: "Invalid email or password" });
+      return;
+    }
+
+    const isMatch = await comparePassword(password, user.passwordHash);
+    if (!isMatch) {
+      res.status(401).json({ error: "Invalid email or password" });
+      return;
+    }
+
+    // Create session in DB
+    const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        expiresAt,
+      },
+    });
+
+    res.cookie(SESSION_COOKIE_NAME, session.id, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      expires: expiresAt,
+    });
+
+    res.status(200).json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// 2. POST /api/auth/logout (FR-05, AC-15)
+app.post("/api/auth/logout", async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies?.[SESSION_COOKIE_NAME] || req.sessionId;
+
+    if (!token && !req.user) {
+      res.status(401).json({ error: "No active session" });
+      return;
+    }
+
+    if (token) {
+      const prisma = getPrisma();
+      await prisma.session.deleteMany({ where: { id: token } });
+    }
+
+    res.clearCookie(SESSION_COOKIE_NAME, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Logout failed" });
+  }
+});
+
+// 3. GET /api/auth/me (FR-04)
+app.get("/api/auth/me", (req: Request, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ error: "Unauthenticated" });
+    return;
+  }
+
+  res.status(200).json({
+    id: req.user.id,
+    name: req.user.name,
+    email: req.user.email,
+    role: req.user.role,
+    mustChangePassword: req.user.mustChangePassword,
+  });
+});
+
+// 4. POST /api/auth/change-password (BR-02, BR-07)
+app.post("/api/auth/change-password", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body ?? {};
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      res.status(400).json({ error: "All password fields are required" });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({ error: "New password and confirm password do not match" });
+      return;
+    }
+
+    const validation = validatePasswordRules(newPassword);
+    if (!validation.isValid) {
+      res.status(400).json({
+        error: "Password does not meet requirements",
+        rules: validation.rules,
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+
+    if (!user) {
+      res.status(401).json({ error: "User not found" });
+      return;
+    }
+
+    const isMatch = await comparePassword(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      res.status(401).json({ error: "Incorrect current password" });
+      return;
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: newPasswordHash,
+        mustChangePassword: false,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      mustChangePassword: false,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to change password" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Helper: Validate Requester Identity (Session or Legacy Header)
 // ---------------------------------------------------------------------------
 export async function validateRequesterHeader(req: Request, res: Response): Promise<number | null> {
+  if (req.user) {
+    return req.user.id;
+  }
+
   const header = req.header("X-Requester-Id");
   if (!header) {
     res.status(401).json({ error: "Missing X-Requester-Id header" });
@@ -145,6 +321,11 @@ export async function validateRequesterHeader(req: Request, res: Response): Prom
   }
 
   const prisma = getPrisma();
+  const user = await prisma.user.findUnique({ where: { id: requesterId } });
+  if (user && user.isActive) {
+    return requesterId;
+  }
+
   const requester = await prisma.requesterUser.findUnique({
     where: { id: requesterId },
   });
@@ -156,6 +337,7 @@ export async function validateRequesterHeader(req: Request, res: Response): Prom
 
   return requesterId;
 }
+
 
 // ---------------------------------------------------------------------------
 // Lab 2 Issue 3 — Create Ticket
