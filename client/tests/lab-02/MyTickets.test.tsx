@@ -4,21 +4,25 @@ import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import App from "../../src/App.js";
 import { MyTicketsScreen } from "../../src/components/MyTicketsScreen.js";
-import { RequesterProvider } from "../../src/context/RequesterContext.js";
+import { AuthProvider } from "../../src/context/AuthContext.js";
 import * as api from "../../src/api.js";
 
 
 describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
-  const mockRequesterA: api.RequesterUser = {
+  const mockUserA: api.AuthUser = {
     id: 1,
     name: "Jennifer Anderson",
     email: "jennifer.anderson@example.com",
+    role: "REQUESTER",
+    mustChangePassword: false,
   };
 
-  const mockRequesterB: api.RequesterUser = {
+  const mockUserB: api.AuthUser = {
     id: 2,
     name: "Michael Brown",
     email: "michael.brown@example.com",
+    role: "REQUESTER",
+    mustChangePassword: false,
   };
 
   const mockCategories: api.Category[] = [
@@ -28,9 +32,7 @@ describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    sessionStorage.clear();
-    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequesterA));
-    vi.spyOn(api, "getRequesters").mockResolvedValue([mockRequesterA, mockRequesterB]);
+    vi.spyOn(api, "getMe").mockResolvedValue(mockUserA);
     vi.spyOn(api, "getCategories").mockResolvedValue(mockCategories);
     vi.spyOn(api, "getRelatedSystems").mockResolvedValue([]);
   });
@@ -43,9 +45,9 @@ describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <MyTicketsScreen onNavigateToCreate={() => {}} />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -89,9 +91,9 @@ describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <MyTicketsScreen onNavigateToCreate={() => {}} />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -113,9 +115,24 @@ describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
     expect(screen.queryByText(/You haven't created any tickets yet/i)).not.toBeInTheDocument();
   });
 
-  it("UI-09: reloads tickets for new Requester when changing Requester from A to B (AC-13, BR-07)", async () => {
-    const getTicketsSpy = vi.spyOn(api, "getTickets").mockImplementation(async (_params, requesterId) => {
-      if (requesterId === 1) {
+  it("UI-09: reloads tickets when user logs out and logs in as a different user", async () => {
+    let currentUser = mockUserA;
+    vi.spyOn(api, "getMe").mockImplementation(async () => {
+      if (!currentUser) throw new Error("Unauthenticated");
+      return currentUser;
+    });
+
+    vi.spyOn(api, "logout").mockImplementation(async () => {
+      currentUser = null as any;
+    });
+
+    vi.spyOn(api, "login").mockImplementation(async () => {
+      currentUser = mockUserB;
+      return mockUserB;
+    });
+
+    vi.spyOn(api, "getTickets").mockImplementation(async () => {
+      if (currentUser?.id === 1) {
         return {
           data: [
             {
@@ -157,23 +174,22 @@ describe("MyTicketsScreen (UI-07, UI-08, UI-09)", () => {
       expect(screen.getAllByText("Requester A Ticket")[0]).toBeInTheDocument();
     });
 
-    // Click Change Requester
-    const changeButton = screen.getByRole("button", { name: /Change Requester/i });
-    fireEvent.click(changeButton);
+    // Click Logout
+    const logoutButton = screen.getByRole("button", { name: /Logout/i });
+    fireEvent.click(logoutButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Select Development Requester/i)).toBeInTheDocument();
+      expect(screen.getByText(/TokTickIT Login/i)).toBeInTheDocument();
     });
 
-    // Select Requester B and Continue
-    const requesterSelect = screen.getByLabelText(/Development Requester/i);
-    fireEvent.change(requesterSelect, { target: { value: "2" } });
-    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
+    // Log in as User B
+    fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: "michael.brown@example.com" } });
+    fireEvent.change(screen.getByPlaceholderText("••••••••"), { target: { value: "ChangeMe123!" } });
+    fireEvent.click(screen.getByRole("button", { name: /Sign In/i }));
 
     await waitFor(() => {
       expect(screen.getAllByText("Requester B Ticket")[0]).toBeInTheDocument();
     });
-
-    expect(getTicketsSpy).toHaveBeenCalledWith(expect.anything(), 2);
   });
 });
+

@@ -1,7 +1,8 @@
 import { PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcrypt";
+import { INITIAL_MIGRATED_PASSWORD } from "../constants.js";
 
-export const MIGRATED_DEFAULT_PASSWORD = "ChangeMe123!";
+export const MIGRATED_DEFAULT_PASSWORD = INITIAL_MIGRATED_PASSWORD;
 
 /**
  * Migrates RequesterUser records to the User model and updates Ticket.requesterId FK.

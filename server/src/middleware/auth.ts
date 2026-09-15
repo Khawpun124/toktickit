@@ -64,25 +64,6 @@ export async function attachUserSession(
       }
     }
 
-    // Fallback for legacy Lab 2 tests using X-Requester-Id header
-    const xRequesterId = req.headers["x-requester-id"];
-    if (xRequesterId && typeof xRequesterId === "string") {
-      const parsedId = parseInt(xRequesterId, 10);
-      if (!isNaN(parsedId)) {
-        const user = await prisma.user.findUnique({ where: { id: parsedId } });
-        if (user && user.isActive) {
-          req.user = {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            mustChangePassword: user.mustChangePassword,
-          };
-          return next();
-        }
-      }
-    }
-
     next();
   } catch (error) {
     next(error);
@@ -92,6 +73,18 @@ export async function attachUserSession(
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  next();
+}
+
+export function requirePasswordChanged(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (req.user.mustChangePassword) {
+    res.status(403).json({ error: "Password change required before accessing this resource" });
     return;
   }
   next();
@@ -112,3 +105,4 @@ export function requireRole(...allowedRoles: Role[]) {
     next();
   };
 }
+

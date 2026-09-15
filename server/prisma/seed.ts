@@ -2,6 +2,7 @@ import { getPrisma } from "../src/prisma.js";
 import { Role } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { runUserMigration } from "../src/utils/migrate-users.js";
+import { INITIAL_MIGRATED_PASSWORD } from "../src/constants.js";
 
 async function main() {
   const prisma = getPrisma();
@@ -42,7 +43,7 @@ async function main() {
     });
   }
 
-  const defaultPasswordHash = await bcrypt.hash("ChangeMe123!", 10);
+  const defaultPasswordHash = await bcrypt.hash(INITIAL_MIGRATED_PASSWORD, 10);
 
   const usersToSeed = [
     // 4+ Active Requesters

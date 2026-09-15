@@ -132,4 +132,51 @@ describe("Auth API Tests (API-01..05, SEC-04)", () => {
       .set("Cookie", cookie!);
     expect(meResAfter.status).toBe(401);
   });
+
+  it("rejects access to protected non-auth API endpoints with 403 when mustChangePassword is true", async () => {
+    // User created in beforeEach has mustChangePassword: true
+    const agent = request.agent(app);
+    await agent.post("/api/auth/login").send({ email: testEmail, password: rawPass });
+
+    const ticketRes = await agent.post("/api/tickets").send({
+      categoryId: 1,
+      relatedSystemId: 1,
+      summary: "Test summary for blocked endpoint",
+      description: "Test description for blocked endpoint",
+      requestedPriority: "MEDIUM",
+    });
+
+    expect(ticketRes.status).toBe(403);
+    expect(ticketRes.body).toEqual({
+      error: "Password change required before accessing this resource",
+    });
+  });
+
+  it("ignores X-Requester-Id header completely and determines identity strictly by session user", async () => {
+    // Set mustChangePassword: false so ticket endpoint is accessible
+    await prisma.user.update({
+      where: { id: createdUserId },
+      data: { mustChangePassword: false },
+    });
+
+    const agent = request.agent(app);
+    await agent.post("/api/auth/login").send({ email: testEmail, password: rawPass });
+
+    // Send request passing X-Requester-Id header of a different user ID (e.g. 99999)
+    const res = await agent
+      .post("/api/tickets")
+      .set("X-Requester-Id", "99999")
+      .send({
+        categoryId: 1,
+        relatedSystemId: 1,
+        summary: "Header spoofing test summary",
+        description: "Header spoofing test description long enough.",
+        requestedPriority: "LOW",
+      });
+
+    expect(res.status).toBe(201);
+    // Ticket's requesterId MUST be createdUserId from session, NOT 99999 from header!
+    expect(res.body.requesterId).toBe(createdUserId);
+  });
 });
+

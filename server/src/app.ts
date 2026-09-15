@@ -10,6 +10,7 @@ import { AttachmentConstants } from "./constants.js";
 import {
   attachUserSession,
   requireAuth,
+  requirePasswordChanged,
   SESSION_COOKIE_NAME,
   SESSION_LIFETIME_MS,
 } from "./middleware/auth.js";
@@ -321,45 +322,6 @@ app.post("/api/auth/change-password", requireAuth, async (req: Request, res: Res
 });
 
 // ---------------------------------------------------------------------------
-// Helper: Validate Requester Identity (Session or Legacy Header)
-// ---------------------------------------------------------------------------
-export async function validateRequesterHeader(req: Request, res: Response): Promise<number | null> {
-  if (req.user) {
-    return req.user.id;
-  }
-
-  const header = req.header("X-Requester-Id");
-  if (!header) {
-    res.status(401).json({ error: "Missing X-Requester-Id header" });
-    return null;
-  }
-
-  const requesterId = parseInt(header, 10);
-  if (isNaN(requesterId) || requesterId.toString() !== header.trim()) {
-    res.status(400).json({ error: "Invalid X-Requester-Id header format" });
-    return null;
-  }
-
-  const prisma = getPrisma();
-  const user = await prisma.user.findUnique({ where: { id: requesterId } });
-  if (user && user.isActive) {
-    return requesterId;
-  }
-
-  const requester = await prisma.requesterUser.findUnique({
-    where: { id: requesterId },
-  });
-
-  if (!requester || !requester.isActive) {
-    res.status(400).json({ error: "Requester ID does not exist or is inactive" });
-    return null;
-  }
-
-  return requesterId;
-}
-
-
-// ---------------------------------------------------------------------------
 // Lab 2 Issue 3 — Create Ticket
 // POST /api/tickets -> validates fields, generates unique Ticket Number,
 // saves ticket with currentStatus: "NEW", and returns 201 (BR-01, BR-02, BR-15..17)
@@ -367,9 +329,8 @@ export async function validateRequesterHeader(req: Request, res: Response): Prom
 import { generateTicketNumber } from "./utils/ticket-number.js";
 import { Priority } from "@prisma/client";
 
-app.post("/api/tickets", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.post("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const { categoryId, relatedSystemId, summary, description, requestedPriority } = req.body ?? {};
 
@@ -486,9 +447,8 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
 // GET /api/tickets -> lists tickets owned by current Requester with search,
 // filters, sort, and pagination envelope (BR-10..14)
 // ---------------------------------------------------------------------------
-app.get("/api/tickets", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.get("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const {
     search,
@@ -629,9 +589,8 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 
 // 6. GET /api/tickets/:id -> Retrieve one owned Ticket (BR-10, AC-03)
-app.get("/api/tickets/:id", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.get("/api/tickets/:id", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedTicketId = parseInt(req.params.id, 10);
   if (isNaN(parsedTicketId)) {
@@ -674,10 +633,8 @@ app.get("/api/tickets/:id", async (req: Request, res: Response) => {
 });
 
 // 7. POST /api/tickets/:id/attachments -> Upload an Attachment to an owned Ticket (BR-21, BR-22, BR-23, BR-26)
-app.post("/api/tickets/:id/attachments", async (req: Request, res: Response) => {
-  // Pre-check 1: Validate Requester Header BEFORE multer parses or writes file to disk
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedTicketId = parseInt(req.params.id, 10);
   if (isNaN(parsedTicketId)) {
@@ -775,9 +732,8 @@ app.post("/api/tickets/:id/attachments", async (req: Request, res: Response) => 
 });
 
 // 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket
-app.get("/api/tickets/:id/attachments", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedTicketId = parseInt(req.params.id, 10);
   if (isNaN(parsedTicketId)) {
@@ -814,9 +770,8 @@ app.get("/api/tickets/:id/attachments", async (req: Request, res: Response) => {
 });
 
 // 9. GET /api/attachments/:id/download -> Download an active, owned Attachment (BR-25)
-app.get("/api/attachments/:id/download", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.get("/api/attachments/:id/download", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedAttachmentId = parseInt(req.params.id, 10);
   if (isNaN(parsedAttachmentId)) {
@@ -854,9 +809,8 @@ app.get("/api/attachments/:id/download", async (req: Request, res: Response) => 
 });
 
 // 10. DELETE /api/attachments/:id -> Soft-remove an owned Attachment (BR-24, BR-26)
-app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.delete("/api/attachments/:id", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedAttachmentId = parseInt(req.params.id, 10);
   if (isNaN(parsedAttachmentId)) {

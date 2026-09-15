@@ -1,11 +1,9 @@
-import React, { useState } from "react";
+import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext.js";
-import { RequesterProvider, useRequester } from "./context/RequesterContext.js";
 import { AppHeader } from "./components/AppHeader.js";
 import { LoginScreen } from "./components/LoginScreen.js";
 import { ChangePasswordScreen } from "./components/ChangePasswordScreen.js";
-import { RequesterSelectionScreen } from "./components/RequesterSelectionScreen.js";
 import { CreateTicketScreen } from "./components/CreateTicketScreen.js";
 import { MyTicketsScreen } from "./components/MyTicketsScreen.js";
 import { RequesterTicketDetailScreen } from "./components/RequesterTicketDetailScreen.js";
@@ -13,8 +11,6 @@ import "./index.css";
 
 export function AppContent() {
   const { user, loading } = useAuth();
-  const { selectedRequester } = useRequester();
-  const [showLogin, setShowLogin] = useState(false);
 
   if (loading) {
     return (
@@ -26,43 +22,12 @@ export function AppContent() {
     );
   }
 
-  const effectiveUser = selectedRequester
-    ? {
-        id: selectedRequester.id,
-        name: selectedRequester.name,
-        email: selectedRequester.email,
-        role: "REQUESTER" as const,
-        mustChangePassword: false,
-      }
-    : user;
-
   const renderMainContent = () => {
-    if (!effectiveUser) {
-      if (showLogin) {
-        return (
-          <div>
-            <LoginScreen />
-            <div className="text-center pb-4">
-              <button className="btn btn-link text-success text-decoration-none" onClick={() => setShowLogin(false)}>
-                Back to Requester Selector
-              </button>
-            </div>
-          </div>
-        );
-      }
-      return (
-        <div>
-          <RequesterSelectionScreen />
-          <div className="text-center pb-4">
-            <button className="btn btn-link text-success text-decoration-none" onClick={() => setShowLogin(true)}>
-              Sign In with Email & Password
-            </button>
-          </div>
-        </div>
-      );
+    if (!user) {
+      return <LoginScreen />;
     }
 
-    if (effectiveUser.mustChangePassword) {
+    if (user.mustChangePassword) {
       return <ChangePasswordScreen />;
     }
 
@@ -89,14 +54,13 @@ export function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <RequesterProvider>
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
-      </RequesterProvider>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
     </AuthProvider>
   );
 }
+
 
 
 

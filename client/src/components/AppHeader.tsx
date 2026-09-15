@@ -1,8 +1,6 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
-import { useRequester } from "../context/RequesterContext.js";
-
 
 interface AppHeaderProps {
   activeTab?: "my-tickets" | "create-ticket" | "my-queue" | "user-management";
@@ -11,16 +9,10 @@ interface AppHeaderProps {
 
 export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) => {
   const { user, logout, refreshUser } = useAuth();
-  const { selectedRequester, clearRequester } = useRequester();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const currentUser = user || (selectedRequester ? {
-    id: selectedRequester.id,
-    name: selectedRequester.name,
-    email: selectedRequester.email,
-    role: "REQUESTER" as const,
-  } : null);
+  const currentUser = user;
 
   const currentTab =
     activeTab || (location.pathname === "/tickets/new" ? "create-ticket" : "my-tickets");
@@ -41,11 +33,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
         await logout();
       } catch {}
     }
-    clearRequester();
     await refreshUser();
     navigate("/");
   };
-
 
   const getRoleBadgeStyle = (role?: string) => {
     switch (role) {
@@ -129,11 +119,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
             <button
               onClick={handleLogout}
               className="btn btn-sm btn-outline-light"
-              aria-label={selectedRequester ? "Change Requester" : "Logout"}
+              aria-label="Logout"
             >
-              {selectedRequester ? "Change Requester" : "Logout"}
+              Logout
             </button>
-
           </div>
         )}
       </div>

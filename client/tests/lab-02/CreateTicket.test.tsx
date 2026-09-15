@@ -3,15 +3,17 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { CreateTicketScreen } from "../../src/components/CreateTicketScreen.js";
-import { RequesterProvider } from "../../src/context/RequesterContext.js";
+import { AuthProvider } from "../../src/context/AuthContext.js";
 import * as api from "../../src/api.js";
 
 
 describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
-  const mockRequester: api.RequesterUser = {
+  const mockUser: api.AuthUser = {
     id: 1,
     name: "Jennifer Anderson",
     email: "jennifer.anderson@example.com",
+    role: "REQUESTER",
+    mustChangePassword: false,
   };
 
   const mockCategories: api.Category[] = [
@@ -26,9 +28,7 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    sessionStorage.clear();
-    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
-    vi.spyOn(api, "getRequesters").mockResolvedValue([mockRequester]);
+    vi.spyOn(api, "getMe").mockResolvedValue(mockUser);
     vi.spyOn(api, "getCategories").mockResolvedValue(mockCategories);
     vi.spyOn(api, "getRelatedSystems").mockResolvedValue(mockRelatedSystems);
   });
@@ -38,9 +38,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -91,9 +91,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -124,9 +124,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -166,9 +166,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -215,9 +215,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
   it("STYLE-02: visually distinguishes read-only fields from editable fields", async () => {
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -250,10 +250,7 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
     vi.spyOn(api, "createTicket").mockResolvedValue(createdTicket);
     const uploadSpy = vi.spyOn(api, "uploadAttachment").mockResolvedValue({
       id: 1,
-      ticketId: 101,
       fileName: "screenshot.png",
-      filePath: "uploads/attachments/101-screenshot.png",
-      fileType: "image/png",
       sizeBytes: 1024,
       uploadedAt: "2026-08-20T09:14:00.000Z",
       removedAt: null,
@@ -262,9 +259,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -290,7 +287,7 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Ticket Created Successfully!/i)).toBeInTheDocument();
-      expect(uploadSpy).toHaveBeenCalledWith(101, validFile, 1);
+      expect(uploadSpy).toHaveBeenCalledWith(101, validFile);
     });
   });
 
@@ -299,9 +296,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -332,9 +329,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
   it("BR-23: displays client-side error when attempting to attach more than 5 files", async () => {
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -374,9 +371,9 @@ describe("CreateTicketScreen (UI-03..UI-06, STYLE-01, STYLE-02)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <CreateTicketScreen />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 

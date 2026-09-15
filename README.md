@@ -141,40 +141,44 @@ npx prisma migrate dev
 npx prisma db seed
 ```
 
-#### Seed Data Content:
+#### Seed Data Content & Initial Credentials:
 - **Categories (4)**: Account and Access, Hardware, Software, Network.
 - **Related Systems (7)**: Email, Campus Wi-Fi, VPN, LEB2 App, Grade Submission App, Printer, Corporate Laptop.
-- **Development Requesters (4 active, 1 inactive)**:
-  - Active: Jennifer Anderson, Michael Brown, Sarah Jenkins, David Wilson
-  - Inactive: Inactive Tester (excluded from selection UI per BR-06)
+- **Default Users & Credentials**:
+  - **Requester User**: `jennifer.anderson@example.com` / `ChangeMe123!`
+  - **Requester User**: `michael.brown@example.com` / `ChangeMe123!`
+  - **IT Staff User**: `alex.staff@tiktockit.com` / `ChangeMe123!`
+  - **Administrator User**: `admin@tiktockit.com` / `ChangeMe123!`
+  - *Note: All initial users created via migration or seed script are initialized with `mustChangePassword = true` and initial password `ChangeMe123!`.*
 
 ---
 
-## 👤 Development Requester Identity Flow
+## 🔐 Authentication & Session Identity Flow
 
-In Lab 2, user management uses a **temporary Development Requester Selection mechanism** (BR-05) to simulate logging in as different requesters without real password authentication:
-- Users select an active requester profile on `/select-requester` (or `/`).
-- The selected requester identity is stored in `sessionStorage` and attached as `X-Requester-Id: <id>` on all API calls.
-- Access to tickets and attachments enforces requester ownership (BR-10, BR-26).
-- *Note: This temporary development mechanism will be replaced with real authentication in Lab 3.*
+TokTickIT uses session-based authentication via HTTP-only session cookies (`tk_session`):
+- Users log in via `POST /api/auth/login` using their email and password.
+- Session cookie is attached automatically to API requests (`credentials: 'include'`).
+- The authenticated session identity (`req.user.id`), not any client-supplied header, determines ownership and access rights (BR-03).
+- Users with `mustChangePassword = true` must change their password before accessing non-authentication API resources.
 
 ---
 
 ## 📡 API Endpoints Summary
-
-All requester-scoped endpoints require header `X-Requester-Id: <id>`.
 
 | Method | Endpoint Path | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | System health check & status |
 | `GET` | `/api/categories` | Fetch active category list for dropdowns |
 | `GET` | `/api/related-systems` | Fetch active related system list for dropdowns |
-| `GET` | `/api/requesters` | Fetch active Development Requesters for selection UI |
-| `POST` | `/api/tickets` | Create a new support ticket |
-| `GET` | `/api/tickets` | List & search requester's tickets (with filters, sorting, pagination) |
-| `GET` | `/api/tickets/:id` | Fetch single ticket details (enforces requester ownership) |
+| `POST` | `/api/auth/login` | Log in user & issue session cookie |
+| `POST` | `/api/auth/logout` | Log out user & destroy session |
+| `GET` | `/api/auth/me` | Fetch currently authenticated user session info |
+| `POST` | `/api/auth/change-password` | Change user password & set `mustChangePassword = false` |
+| `POST` | `/api/tickets` | Create a new support ticket (requires session auth) |
+| `GET` | `/api/tickets` | List & search authenticated user's tickets (with filters, sorting, pagination) |
+| `GET` | `/api/tickets/:id` | Fetch single ticket details (enforces session ownership) |
 | `POST` | `/api/tickets/:id/attachments` | Upload attachment file to a ticket (max 5MB, JPG/PNG/WEBP/PDF) |
-| `GET` | `/api/attachments/:id/download` | Download active attachment file (requires `X-Requester-Id`) |
+| `GET` | `/api/attachments/:id/download` | Download active attachment file (enforces session ownership) |
 | `DELETE` | `/api/attachments/:id` | Soft-remove attachment with a reason |
 
 ---

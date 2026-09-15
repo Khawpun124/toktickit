@@ -14,51 +14,21 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const stored = sessionStorage.getItem("toktickit_selected_requester");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        return {
-          id: parsed.id,
-          name: parsed.name || "Jennifer Anderson",
-          email: parsed.email || "jennifer.anderson@example.com",
-          role: "REQUESTER",
-          mustChangePassword: false,
-        };
-      } catch {}
-    }
-    return null;
-  });
-  const [loading, setLoading] = useState<boolean>(!sessionStorage.getItem("toktickit_selected_requester"));
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-
 
   const refreshUser = async () => {
     try {
       const u = await getMe();
       setUser(u);
     } catch {
-      // Fallback for legacy Lab 1 and Lab 2 UI tests that mock sessionStorage
-      const stored = sessionStorage.getItem("toktickit_selected_requester");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setUser({
-            id: parsed.id,
-            name: parsed.name || "Jennifer Anderson",
-            email: parsed.email || "jennifer.anderson@example.com",
-            role: "REQUESTER",
-            mustChangePassword: false,
-          });
-          return;
-        } catch {}
-      }
       setUser(null);
     } finally {
       setLoading(false);
     }
   };
+
 
 
   useEffect(() => {

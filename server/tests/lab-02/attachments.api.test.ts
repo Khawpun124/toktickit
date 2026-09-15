@@ -4,13 +4,15 @@ import path from "path";
 import fs from "fs";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
+import { INITIAL_MIGRATED_PASSWORD } from "../../src/constants.js";
 
 describe("Attachment API (API-10 through API-15)", () => {
   const prisma = getPrisma();
   let ticket1Id: number;
   let ticket2Id: number;
-  let req1Id: number;
-  let req2Id: number;
+  let req1User: any;
+  let req2User: any;
+  let agent: any;
 
   beforeEach(async () => {
     const requesters = await prisma.user.findMany({
@@ -21,18 +23,28 @@ describe("Attachment API (API-10 through API-15)", () => {
     if (requesters.length < 1) {
       throw new Error("No active REQUESTER user found");
     }
-    req1Id = requesters[0].id;
-    req2Id = requesters[1] ? requesters[1].id : requesters[0].id;
+    req1User = requesters[0];
+    req2User = requesters[1] ? requesters[1] : requesters[0];
 
-    await prisma.attachment.deleteMany({ where: { ticket: { requesterId: { in: [req1Id, req2Id] } } } });
-    await prisma.ticket.deleteMany({ where: { requesterId: { in: [req1Id, req2Id] } } });
+    await prisma.user.updateMany({
+      where: { id: { in: [req1User.id, req2User.id] } },
+      data: { mustChangePassword: false },
+    });
+
+    agent = request.agent(app);
+    await agent
+      .post("/api/auth/login")
+      .send({ email: req1User.email, password: INITIAL_MIGRATED_PASSWORD });
+
+    await prisma.attachment.deleteMany({ where: { ticket: { requesterId: { in: [req1User.id, req2User.id] } } } });
+    await prisma.ticket.deleteMany({ where: { requesterId: { in: [req1User.id, req2User.id] } } });
 
     const prefix = `TKT-ATT-${Date.now()}`;
 
     const t1 = await prisma.ticket.create({
       data: {
         ticketNumber: `${prefix}-001`,
-        requesterId: req1Id,
+        requesterId: req1User.id,
         categoryId: 1,
         relatedSystemId: 1,
         summary: "Attachment test ticket for Requester 1",
@@ -45,7 +57,7 @@ describe("Attachment API (API-10 through API-15)", () => {
     const t2 = await prisma.ticket.create({
       data: {
         ticketNumber: `${prefix}-002`,
-        requesterId: req2Id,
+        requesterId: req2User.id,
         categoryId: 1,
         relatedSystemId: 1,
         summary: "Attachment test ticket for Requester 2",
@@ -65,9 +77,8 @@ describe("Attachment API (API-10 through API-15)", () => {
   });
 
   it("API-10: uploads valid JPG under 5MB (AC-05, BR-21)", async () => {
-    const res = await request(app)
+    const res = await agent
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("fake-jpg-content"), "test-image.jpg");
 
     expect(res.status).toBe(201);
@@ -78,9 +89,8 @@ describe("Attachment API (API-10 through API-15)", () => {
 
   it("API-11: rejects 6MB file with size error (AC-06, BR-22)", async () => {
     const largeBuffer = Buffer.alloc(6 * 1024 * 1024);
-    const res = await request(app)
+    const res = await agent
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", req1Id.toString())
       .attach("file", largeBuffer, "large.pdf");
 
     expect(res.status).toBe(400);
@@ -88,9 +98,8 @@ describe("Attachment API (API-10 through API-15)", () => {
   });
 
   it("API-12: rejects unsupported file type .docx (BR-21)", async () => {
-    const res = await request(app)
+    const res = await agent
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("docx-content"), "document.docx");
 
     expect(res.status).toBe(400);
@@ -110,9 +119,8 @@ describe("Attachment API (API-10 through API-15)", () => {
       });
     }
 
-    const res = await request(app)
+    const res = await agent
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("image6-content"), "file6.png");
 
     expect(res.status).toBe(400);
@@ -130,9 +138,8 @@ describe("Attachment API (API-10 through API-15)", () => {
       },
     });
 
-    const deleteRes = await request(app)
+    const deleteRes = await agent
       .delete(`/api/attachments/${att.id}`)
-      .set("X-Requester-Id", req1Id.toString())
       .send({ reason: "Uploaded wrong document" });
 
     expect(deleteRes.status).toBe(200);
@@ -141,9 +148,8 @@ describe("Attachment API (API-10 through API-15)", () => {
     expect(deleteRes.body.removedReason).toBe("Uploaded wrong document");
 
     // List attachments should still show metadata
-    const listRes = await request(app)
-      .get(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", req1Id.toString());
+    const listRes = await agent
+      .get(`/api/tickets/${ticket1Id}/attachments`);
 
     expect(listRes.status).toBe(200);
     const removedItem = listRes.body.find((a: any) => a.id === att.id);
@@ -152,9 +158,8 @@ describe("Attachment API (API-10 through API-15)", () => {
     expect(removedItem.removedReason).toBe("Uploaded wrong document");
 
     // Download attempt on soft-removed attachment must return 404 (BR-25)
-    const downloadRes = await request(app)
-      .get(`/api/attachments/${att.id}/download`)
-      .set("X-Requester-Id", req1Id.toString());
+    const downloadRes = await agent
+      .get(`/api/attachments/${att.id}/download`);
 
     expect(downloadRes.status).toBe(404);
     expect(downloadRes.body.error).toBe("Attachment not found");
@@ -171,9 +176,8 @@ describe("Attachment API (API-10 through API-15)", () => {
       },
     });
 
-    const deleteRes = await request(app)
+    const deleteRes = await agent
       .delete(`/api/attachments/${att2.id}`)
-      .set("X-Requester-Id", req1Id.toString())
       .send({ reason: "Trying to remove other requester file" });
 
     expect(deleteRes.status).toBe(404);
@@ -184,10 +188,9 @@ describe("Attachment API (API-10 through API-15)", () => {
     const uploadDir = path.resolve(process.cwd(), "uploads/attachments");
     const initialFiles = fs.existsSync(uploadDir) ? fs.readdirSync(uploadDir) : [];
 
-    // Attempt upload to ticket owned by Requester 2 using Requester 1 header
-    const res = await request(app)
+    // Attempt upload to ticket owned by Requester 2 using Requester 1 session
+    const res = await agent
       .post(`/api/tickets/${ticket2Id}/attachments`)
-      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("unowned-file-content"), "unowned.png");
 
     expect(res.status).toBe(404);
@@ -209,14 +212,12 @@ describe("Attachment API (API-10 through API-15)", () => {
       });
     }
 
-    const req1 = request(app)
+    const req1 = agent
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("concurrent-file-1"), "concurrent1.png");
 
-    const req2 = request(app)
+    const req2 = agent
       .post(`/api/tickets/${ticket1Id}/attachments`)
-      .set("X-Requester-Id", req1Id.toString())
       .attach("file", Buffer.from("concurrent-file-2"), "concurrent2.png");
 
     const [res1, res2] = await Promise.all([req1, req2]);
@@ -243,12 +244,12 @@ describe("Attachment API (API-10 through API-15)", () => {
     });
 
     const longReason = "a".repeat(501);
-    const res = await request(app)
+    const res = await agent
       .delete(`/api/attachments/${att.id}`)
-      .set("X-Requester-Id", req1Id.toString())
       .send({ reason: longReason });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/must not exceed 500 characters/i);
   });
 });
+
