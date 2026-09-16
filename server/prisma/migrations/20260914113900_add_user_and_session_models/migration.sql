@@ -66,7 +66,7 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId"
 
 -- Populate User table from existing RequesterUser data so foreign key constraint succeeds
 INSERT INTO "User" ("id", "name", "email", "passwordHash", "role", "isActive", "mustChangePassword", "createdAt", "updatedAt")
-SELECT "id", "name", "email", '$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeg6Lruj3vjPGga31lW', 'REQUESTER'::"Role", "isActive", true, "createdAt", NOW()
+SELECT "id", "name", "email", '$2b$10$tZsnfVn576Gz.hZ3cO3j0uhcghkox3p803Kj417mXjly08Yd6/jra', 'REQUESTER'::"Role", "isActive", true, "createdAt", NOW()
 FROM "RequesterUser"
 ON CONFLICT ("email") DO NOTHING;
 
