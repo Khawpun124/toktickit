@@ -64,14 +64,6 @@ CREATE INDEX "Ticket_ticketOwnerId_idx" ON "Ticket"("ticketOwnerId");
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Populate User table from existing RequesterUser data so foreign key constraint succeeds
-INSERT INTO "User" ("id", "name", "email", "passwordHash", "role", "isActive", "mustChangePassword", "createdAt", "updatedAt")
-SELECT "id", "name", "email", '$2b$10$tZsnfVn576Gz.hZ3cO3j0uhcghkox3p803Kj417mXjly08Yd6/jra', 'REQUESTER'::"Role", "isActive", true, "createdAt", NOW()
-FROM "RequesterUser"
-ON CONFLICT ("email") DO NOTHING;
-
-SELECT setval(pg_get_serial_sequence('"User"', 'id'), COALESCE((SELECT MAX(id) FROM "User"), 1));
-
 -- AddForeignKey
 ALTER TABLE "Ticket" ADD CONSTRAINT "Ticket_requesterId_fkey" FOREIGN KEY ("requesterId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

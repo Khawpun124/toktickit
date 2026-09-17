@@ -1,8 +1,8 @@
 import { PrismaClient, Role } from "@prisma/client";
-import bcrypt from "bcrypt";
-import { INITIAL_MIGRATED_PASSWORD } from "../constants.js";
+import { hashPassword } from "./password.js";
+import { MIGRATED_USER_INITIAL_PASSWORD } from "../constants.js";
 
-export const MIGRATED_DEFAULT_PASSWORD = INITIAL_MIGRATED_PASSWORD;
+export const MIGRATED_DEFAULT_PASSWORD = MIGRATED_USER_INITIAL_PASSWORD;
 
 /**
  * Migrates RequesterUser records to the User model and updates Ticket.requesterId FK.
@@ -13,7 +13,8 @@ export async function runUserMigration(prisma: PrismaClient) {
   let migratedUsersCount = 0;
   let updatedTicketsCount = 0;
 
-  const defaultPasswordHash = await bcrypt.hash(MIGRATED_DEFAULT_PASSWORD, 10);
+  const defaultPasswordHash = await hashPassword(MIGRATED_USER_INITIAL_PASSWORD);
+
 
   for (const requester of requesters) {
     // Check if User already exists by email
