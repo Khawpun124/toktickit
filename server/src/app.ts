@@ -4,8 +4,21 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import multer from "multer";
+import cookieParser from "cookie-parser";
 import { getPrisma } from "./prisma.js";
 import { AttachmentConstants } from "./constants.js";
+import {
+  attachUserSession,
+  requireAuth,
+  requirePasswordChanged,
+  SESSION_COOKIE_NAME,
+  SESSION_LIFETIME_MS,
+} from "./middleware/auth.js";
+import {
+  comparePassword,
+  hashPassword,
+  validatePasswordRules,
+} from "./utils/password.js";
 
 const uploadDir = path.resolve(process.cwd(), "uploads/attachments");
 if (!fs.existsSync(uploadDir)) {
@@ -36,8 +49,11 @@ void getPrisma;
 // Supertest can import `app` without opening a port. Do not merge these files.
 export const app = express();
 
-app.use(cors());          // already wired: lets the Vite dev server call this API
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
+app.use(attachUserSession);
+
 
 // ---------------------------------------------------------------------------
 // Issue 2 — API health check
@@ -84,8 +100,9 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
 app.get("/api/requesters", async (_req: Request, res: Response) => {
   try {
     const prisma = getPrisma();
-    const requesters = await prisma.requesterUser.findMany({
+    let requesters = await prisma.user.findMany({
       where: {
+        role: "REQUESTER",
         isActive: true,
       },
       select: {
@@ -97,6 +114,25 @@ app.get("/api/requesters", async (_req: Request, res: Response) => {
         id: "asc",
       },
     });
+
+    if (requesters.length === 0) {
+      const legacyRequesters = await prisma.requesterUser.findMany({
+        where: {
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+        orderBy: {
+          id: "asc",
+        },
+      });
+      res.status(200).json(legacyRequesters);
+      return;
+    }
+
     res.status(200).json(requesters);
   } catch (error) {
     res.status(500).json({ error: "Unable to load requesters" });
@@ -129,33 +165,161 @@ app.get("/api/related-systems", async (_req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// Helper: Validate X-Requester-Id Header (Section 12 of api-spec.md)
+// Lab 3 Issue 2 — Authentication Endpoints
 // ---------------------------------------------------------------------------
-export async function validateRequesterHeader(req: Request, res: Response): Promise<number | null> {
-  const header = req.header("X-Requester-Id");
-  if (!header) {
-    res.status(401).json({ error: "Missing X-Requester-Id header" });
-    return null;
+
+// 1. POST /api/auth/login (BR-01, BR-05)
+app.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body ?? {};
+    if (!email || typeof email !== "string" || !password || typeof password !== "string") {
+      res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+
+    // BR-05: Generic error for wrong password, unknown email, or inactive account
+    if (!user || !user.isActive) {
+      res.status(401).json({ error: "Invalid email or password" });
+      return;
+    }
+
+    const isMatch = await comparePassword(password, user.passwordHash);
+    if (!isMatch) {
+      res.status(401).json({ error: "Invalid email or password" });
+      return;
+    }
+
+    // Create session in DB
+    const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        expiresAt,
+      },
+    });
+
+    res.cookie(SESSION_COOKIE_NAME, session.id, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      expires: expiresAt,
+    });
+
+    res.status(200).json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// 2. POST /api/auth/logout (FR-05, AC-15)
+app.post("/api/auth/logout", async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies?.[SESSION_COOKIE_NAME] || req.sessionId;
+
+    if (!token && !req.user) {
+      res.status(401).json({ error: "No active session" });
+      return;
+    }
+
+    if (token) {
+      const prisma = getPrisma();
+      await prisma.session.deleteMany({ where: { id: token } });
+    }
+
+    res.clearCookie(SESSION_COOKIE_NAME, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Logout failed" });
+  }
+});
+
+// 3. GET /api/auth/me (FR-04)
+app.get("/api/auth/me", (req: Request, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ error: "Unauthenticated" });
+    return;
   }
 
-  const requesterId = parseInt(header, 10);
-  if (isNaN(requesterId) || requesterId.toString() !== header.trim()) {
-    res.status(400).json({ error: "Invalid X-Requester-Id header format" });
-    return null;
-  }
-
-  const prisma = getPrisma();
-  const requester = await prisma.requesterUser.findUnique({
-    where: { id: requesterId },
+  res.status(200).json({
+    id: req.user.id,
+    name: req.user.name,
+    email: req.user.email,
+    role: req.user.role,
+    mustChangePassword: req.user.mustChangePassword,
   });
+});
 
-  if (!requester || !requester.isActive) {
-    res.status(400).json({ error: "Requester ID does not exist or is inactive" });
-    return null;
+// 4. POST /api/auth/change-password (BR-02, BR-07)
+app.post("/api/auth/change-password", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body ?? {};
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      res.status(400).json({ error: "All password fields are required" });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({ error: "New password and confirm password do not match" });
+      return;
+    }
+
+    const validation = validatePasswordRules(newPassword);
+    if (!validation.isValid) {
+      res.status(400).json({
+        error: "Password does not meet requirements",
+        rules: validation.rules,
+      });
+      return;
+    }
+
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+
+    if (!user) {
+      res.status(401).json({ error: "User not found" });
+      return;
+    }
+
+    const isMatch = await comparePassword(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      res.status(401).json({ error: "Incorrect current password" });
+      return;
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: newPasswordHash,
+        mustChangePassword: false,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      mustChangePassword: false,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to change password" });
   }
-
-  return requesterId;
-}
+});
 
 // ---------------------------------------------------------------------------
 // Lab 2 Issue 3 — Create Ticket
@@ -165,9 +329,8 @@ export async function validateRequesterHeader(req: Request, res: Response): Prom
 import { generateTicketNumber } from "./utils/ticket-number.js";
 import { Priority } from "@prisma/client";
 
-app.post("/api/tickets", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.post("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const { categoryId, relatedSystemId, summary, description, requestedPriority } = req.body ?? {};
 
@@ -284,9 +447,8 @@ app.post("/api/tickets", async (req: Request, res: Response) => {
 // GET /api/tickets -> lists tickets owned by current Requester with search,
 // filters, sort, and pagination envelope (BR-10..14)
 // ---------------------------------------------------------------------------
-app.get("/api/tickets", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.get("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const {
     search,
@@ -427,9 +589,8 @@ app.get("/api/tickets", async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 
 // 6. GET /api/tickets/:id -> Retrieve one owned Ticket (BR-10, AC-03)
-app.get("/api/tickets/:id", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.get("/api/tickets/:id", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedTicketId = parseInt(req.params.id, 10);
   if (isNaN(parsedTicketId)) {
@@ -472,10 +633,8 @@ app.get("/api/tickets/:id", async (req: Request, res: Response) => {
 });
 
 // 7. POST /api/tickets/:id/attachments -> Upload an Attachment to an owned Ticket (BR-21, BR-22, BR-23, BR-26)
-app.post("/api/tickets/:id/attachments", async (req: Request, res: Response) => {
-  // Pre-check 1: Validate Requester Header BEFORE multer parses or writes file to disk
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedTicketId = parseInt(req.params.id, 10);
   if (isNaN(parsedTicketId)) {
@@ -573,9 +732,8 @@ app.post("/api/tickets/:id/attachments", async (req: Request, res: Response) => 
 });
 
 // 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket
-app.get("/api/tickets/:id/attachments", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedTicketId = parseInt(req.params.id, 10);
   if (isNaN(parsedTicketId)) {
@@ -612,9 +770,8 @@ app.get("/api/tickets/:id/attachments", async (req: Request, res: Response) => {
 });
 
 // 9. GET /api/attachments/:id/download -> Download an active, owned Attachment (BR-25)
-app.get("/api/attachments/:id/download", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.get("/api/attachments/:id/download", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedAttachmentId = parseInt(req.params.id, 10);
   if (isNaN(parsedAttachmentId)) {
@@ -652,9 +809,8 @@ app.get("/api/attachments/:id/download", async (req: Request, res: Response) => 
 });
 
 // 10. DELETE /api/attachments/:id -> Soft-remove an owned Attachment (BR-24, BR-26)
-app.delete("/api/attachments/:id", async (req: Request, res: Response) => {
-  const requesterId = await validateRequesterHeader(req, res);
-  if (requesterId === null) return;
+app.delete("/api/attachments/:id", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
 
   const parsedAttachmentId = parseInt(req.params.id, 10);
   if (isNaN(parsedAttachmentId)) {

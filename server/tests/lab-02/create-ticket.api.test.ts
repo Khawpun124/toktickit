@@ -1,10 +1,34 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
+import { INITIAL_MIGRATED_PASSWORD } from "../../src/constants.js";
 
 describe("POST /api/tickets (Create Ticket API)", () => {
-  const validHeader = { "X-Requester-Id": "1" };
+  const prisma = getPrisma();
+  let requesterUser: any;
+  let agent: any;
+
+  beforeAll(async () => {
+    requesterUser = await prisma.user.findFirst({
+      where: { role: "REQUESTER", isActive: true },
+      orderBy: { id: "asc" },
+    });
+    if (!requesterUser) {
+      throw new Error("No active REQUESTER user found in database");
+    }
+
+    // Ensure mustChangePassword is false for testing ticket operations
+    await prisma.user.update({
+      where: { id: requesterUser.id },
+      data: { mustChangePassword: false },
+    });
+
+    agent = request.agent(app);
+    await agent
+      .post("/api/auth/login")
+      .send({ email: requesterUser.email, password: INITIAL_MIGRATED_PASSWORD });
+  });
 
   it("API-01: creates a ticket with valid data and returns 201 with unique ticket number (AC-01, BR-01, BR-02)", async () => {
     const payload = {
@@ -15,16 +39,15 @@ describe("POST /api/tickets (Create Ticket API)", () => {
       requestedPriority: "HIGH",
     };
 
-    const res = await request(app)
+    const res = await agent
       .post("/api/tickets")
-      .set(validHeader)
       .send(payload);
 
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty("id");
     expect(res.body).toHaveProperty("ticketNumber");
     expect(res.body.ticketNumber).toMatch(/^TKT-\d{4}-\d{6}$/);
-    expect(res.body.requesterId).toBe(1);
+    expect(res.body.requesterId).toBe(requesterUser.id);
     expect(res.body.categoryId).toBe(1);
     expect(res.body.relatedSystemId).toBe(1);
     expect(res.body.summary).toBe("Cannot access network drive");
@@ -45,9 +68,8 @@ describe("POST /api/tickets (Create Ticket API)", () => {
       requestedPriority: "MEDIUM",
     };
 
-    const res = await request(app)
+    const res = await agent
       .post("/api/tickets")
-      .set(validHeader)
       .send(payload);
 
     expect(res.status).toBe(400);
@@ -65,9 +87,8 @@ describe("POST /api/tickets (Create Ticket API)", () => {
       requestedPriority: "LOW",
     };
 
-    const res = await request(app)
+    const res = await agent
       .post("/api/tickets")
-      .set(validHeader)
       .send(payload);
 
     expect(res.status).toBe(400);
@@ -93,9 +114,8 @@ describe("POST /api/tickets (Create Ticket API)", () => {
         requestedPriority: "MEDIUM",
       };
 
-      const res = await request(app)
+      const res = await agent
         .post("/api/tickets")
-        .set(validHeader)
         .send(payload);
 
       expect(res.status).toBe(400);
@@ -108,10 +128,10 @@ describe("POST /api/tickets (Create Ticket API)", () => {
     }
   });
 
-  it("returns 401 when X-Requester-Id header is missing", async () => {
-    const res = await request(app).post("/api/tickets").send({});
-    expect(res.status).toBe(401);
-    expect(res.body).toHaveProperty("error", "Missing X-Requester-Id header");
+  it("returns 401 when request is unauthenticated", async () => {
+    const unauthenticatedRes = await request(app).post("/api/tickets").send({});
+    expect(unauthenticatedRes.status).toBe(401);
+    expect(unauthenticatedRes.body).toHaveProperty("error", "Unauthorized");
   });
 
   it("API-17: returns 201 Created and includes attachmentUploadErrors array on ticket creation (BR-27)", async () => {
@@ -123,9 +143,8 @@ describe("POST /api/tickets (Create Ticket API)", () => {
       requestedPriority: "LOW",
     };
 
-    const res = await request(app)
+    const res = await agent
       .post("/api/tickets")
-      .set(validHeader)
       .send(payload);
 
     expect(res.status).toBe(201);
@@ -134,4 +153,5 @@ describe("POST /api/tickets (Create Ticket API)", () => {
     expect(Array.isArray(res.body.attachmentUploadErrors)).toBe(true);
   });
 });
+
 

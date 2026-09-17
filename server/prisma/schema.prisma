@@ -10,6 +10,38 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  REQUESTER
+  IT_STAFF
+  ADMINISTRATOR
+}
+
+model User {
+  id                 Int            @id @default(autoincrement())
+  name               String
+  email              String         @unique
+  passwordHash       String
+  role               Role
+  isActive           Boolean        @default(true)
+  mustChangePassword Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  tickets            Ticket[]       @relation("TicketRequester")
+  ownedTickets       Ticket[]       @relation("TicketOwner")
+  sessions           Session[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 // ---------------------------------------------------------------------------
 // Issue 3 — Create and seed IT request categories
 // ---------------------------------------------------------------------------
@@ -22,7 +54,6 @@ model Category {
   tickets   Ticket[]
 }
 
-
 // ---------------------------------------------------------------------------
 // Lab 2 Issue 2 — RequesterUser and RelatedSystem
 // ---------------------------------------------------------------------------
@@ -33,7 +64,6 @@ model RequesterUser {
   email     String   @unique
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
-  tickets   Ticket[]
 }
 
 model RelatedSystem {
@@ -55,27 +85,38 @@ enum Priority {
 
 enum TicketStatus {
   NEW
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_REQUESTER
+  RESOLVED
+  CLOSED
+  REOPENED
+  CANCELLED
 }
 
 model Ticket {
-  id                Int           @id @default(autoincrement())
-  ticketNumber      String        @unique
-  requesterId       Int
-  requester         RequesterUser @relation(fields: [requesterId], references: [id])
-  categoryId        Int
-  category          Category      @relation(fields: [categoryId], references: [id])
-  relatedSystemId   Int
-  relatedSystem     RelatedSystem @relation(fields: [relatedSystemId], references: [id])
-  summary           String
-  description       String
-  requestedPriority Priority
-  itPriority        Priority?
-  currentStatus     TicketStatus  @default(NEW)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  attachments       Attachment[]
+  id                     Int           @id @default(autoincrement())
+  ticketNumber           String        @unique
+  requesterId            Int
+  requester              User          @relation("TicketRequester", fields: [requesterId], references: [id])
+  ticketOwnerId          Int?
+  ticketOwner            User?         @relation("TicketOwner", fields: [ticketOwnerId], references: [id])
+  categoryId             Int
+  category               Category      @relation(fields: [categoryId], references: [id])
+  relatedSystemId        Int
+  relatedSystem          RelatedSystem @relation(fields: [relatedSystemId], references: [id])
+  summary                String
+  description            String
+  requestedPriority      Priority
+  itPriority             Priority?
+  currentStatus          TicketStatus  @default(NEW)
+  problemAppearsResolved Boolean       @default(false)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  attachments            Attachment[]
 
   @@index([requesterId])
+  @@index([ticketOwnerId])
 }
 
 // ---------------------------------------------------------------------------
@@ -96,3 +137,4 @@ model Attachment {
 
   @@index([ticketId])
 }
+

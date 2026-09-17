@@ -124,8 +124,7 @@ export interface Ticket {
 }
 
 export async function createTicket(
-  payload: CreateTicketPayload,
-  requesterId: number
+  payload: CreateTicketPayload
 ): Promise<Ticket> {
   let res: Response;
   try {
@@ -133,8 +132,8 @@ export async function createTicket(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Requester-Id": requesterId.toString(),
       },
+      credentials: "include",
       body: JSON.stringify(payload),
     });
   } catch {
@@ -191,8 +190,7 @@ export interface TicketsResponse {
 
 // Issue 4 — My Tickets List
 export async function getTickets(
-  params: GetTicketsParams,
-  requesterId: number
+  params: GetTicketsParams
 ): Promise<TicketsResponse> {
   const query = new URLSearchParams();
   if (params.search) query.append("search", params.search);
@@ -208,9 +206,7 @@ export async function getTickets(
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api/tickets?${query.toString()}`, {
-      headers: {
-        "X-Requester-Id": requesterId.toString(),
-      },
+      credentials: "include",
     });
   } catch {
     throw new Error("Unable to connect to TokTickIT API");
@@ -249,13 +245,11 @@ export interface TicketDetail {
 }
 
 // Issue 5 — Get single ticket detail
-export async function getTicket(id: number, requesterId: number): Promise<TicketDetail> {
+export async function getTicket(id: number): Promise<TicketDetail> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api/tickets/${id}`, {
-      headers: {
-        "X-Requester-Id": requesterId.toString(),
-      },
+      credentials: "include",
     });
   } catch {
     throw new Error("Unable to connect to TokTickIT API");
@@ -272,13 +266,11 @@ export async function getTicket(id: number, requesterId: number): Promise<Ticket
 }
 
 // Issue 5 — Get attachments list for ticket
-export async function getAttachments(ticketId: number, requesterId: number): Promise<AttachmentItem[]> {
+export async function getAttachments(ticketId: number): Promise<AttachmentItem[]> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api/tickets/${ticketId}/attachments`, {
-      headers: {
-        "X-Requester-Id": requesterId.toString(),
-      },
+      credentials: "include",
     });
   } catch {
     throw new Error("Unable to connect to TokTickIT API");
@@ -297,8 +289,7 @@ export async function getAttachments(ticketId: number, requesterId: number): Pro
 // Issue 5 — Upload attachment
 export async function uploadAttachment(
   ticketId: number,
-  file: File,
-  requesterId: number
+  file: File
 ): Promise<AttachmentItem> {
   const formData = new FormData();
   formData.append("file", file);
@@ -307,9 +298,7 @@ export async function uploadAttachment(
   try {
     res = await fetch(`${API_URL}/api/tickets/${ticketId}/attachments`, {
       method: "POST",
-      headers: {
-        "X-Requester-Id": requesterId.toString(),
-      },
+      credentials: "include",
       body: formData,
     });
   } catch {
@@ -329,18 +318,15 @@ export function downloadAttachmentUrl(attachmentId: number): string {
   return `${API_URL}/api/attachments/${attachmentId}/download`;
 }
 
-// Issue 5 — Download attachment with authentication header (X-Requester-Id)
+// Issue 5 — Download attachment with authentication
 export async function downloadAttachment(
   attachmentId: number,
-  fileName: string,
-  requesterId: number
+  fileName: string
 ): Promise<void> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api/attachments/${attachmentId}/download`, {
-      headers: {
-        "X-Requester-Id": requesterId.toString(),
-      },
+      credentials: "include",
     });
   } catch {
     throw new Error("Unable to connect to TokTickIT API");
@@ -376,8 +362,7 @@ export async function downloadAttachment(
 // Issue 5 — Soft-remove attachment
 export async function deleteAttachment(
   attachmentId: number,
-  reason: string,
-  requesterId: number
+  reason: string
 ): Promise<{ id: number; fileName: string; removedAt: string; removedReason: string }> {
   let res: Response;
   try {
@@ -385,8 +370,8 @@ export async function deleteAttachment(
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
-        "X-Requester-Id": requesterId.toString(),
       },
+      credentials: "include",
       body: JSON.stringify({ reason }),
     });
   } catch {
@@ -400,6 +385,110 @@ export async function deleteAttachment(
 
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Lab 3 Issue 2 — Authentication API
+// ---------------------------------------------------------------------------
+
+export type UserRole = "REQUESTER" | "IT_STAFF" | "ADMINISTRATOR";
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  mustChangePassword: boolean;
+}
+
+export interface PasswordRuleResults {
+  minLength: boolean;
+  hasUpperLower: boolean;
+  hasNumber: boolean;
+  hasSpecialChar: boolean;
+}
+
+export async function login(email: string, password: string): Promise<AuthUser> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Invalid email or password. Please try again.");
+  }
+
+  return data;
+}
+
+export async function logout(): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Logout failed");
+  }
+}
+
+export async function getMe(): Promise<AuthUser> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/me`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    throw new Error("Unauthenticated");
+  }
+
+  return await res.json();
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<{ success: boolean; mustChangePassword: boolean }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/auth/change-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err: any = new Error(data.error || "Password change failed");
+    err.rules = data.rules;
+    throw err;
+  }
+
+  return data;
+}
+
 
 
 

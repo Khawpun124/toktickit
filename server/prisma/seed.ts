@@ -1,11 +1,15 @@
 import { getPrisma } from "../src/prisma.js";
+import { Role } from "@prisma/client";
+import { hashPassword } from "../src/utils/password.js";
+import { runUserMigration } from "../src/utils/migrate-users.js";
+import { MIGRATED_USER_INITIAL_PASSWORD } from "../src/constants.js";
 
-// Issue 3 — seed the four supported categories.
-// The four names are: Account and Access, Hardware, Software, Network.
-// Requirement: running the seed twice must NOT create duplicates.
-// Hint: prisma.category.upsert({ where:{name}, update:{}, create:{name} }).
 async function main() {
   const prisma = getPrisma();
+
+  // Run user migration for existing RequesterUser records
+  await runUserMigration(prisma);
+
   const categories = [
     "Account and Access",
     "Hardware",
@@ -18,22 +22,6 @@ async function main() {
       where: { name },
       update: {},
       create: { name },
-    });
-  }
-
-  const requesters = [
-    { name: "Jennifer Anderson", email: "jennifer.anderson@example.com", isActive: true },
-    { name: "Michael Brown", email: "michael.brown@example.com", isActive: true },
-    { name: "Sarah Connor", email: "sarah.connor@example.com", isActive: true },
-    { name: "David Miller", email: "david.miller@example.com", isActive: true },
-    { name: "Inactive Tester", email: "inactive.tester@example.com", isActive: false },
-  ];
-
-  for (const req of requesters) {
-    await prisma.requesterUser.upsert({
-      where: { email: req.email },
-      update: { name: req.name, isActive: req.isActive },
-      create: req,
     });
   }
 
@@ -55,7 +43,42 @@ async function main() {
     });
   }
 
-  console.log("Seeding categories, requesters, and related systems completed successfully.");
+  const defaultPasswordHash = await hashPassword(MIGRATED_USER_INITIAL_PASSWORD);
+
+  const usersToSeed = [
+    // 4+ Active Requesters
+    { name: "Jennifer Anderson", email: "jennifer.anderson@example.com", role: Role.REQUESTER, isActive: true },
+    { name: "Michael Brown", email: "michael.brown@example.com", role: Role.REQUESTER, isActive: true },
+    { name: "Sarah Connor", email: "sarah.connor@example.com", role: Role.REQUESTER, isActive: true },
+    { name: "David Miller", email: "david.miller@example.com", role: Role.REQUESTER, isActive: true },
+    // 1+ Inactive Requester
+    { name: "Inactive Tester", email: "inactive.tester@example.com", role: Role.REQUESTER, isActive: false },
+    // 3+ Active IT Staff
+    { name: "Alex Staff", email: "alex.staff@tiktockit.com", role: Role.IT_STAFF, isActive: true },
+    { name: "Ben Staff", email: "ben.staff@tiktockit.com", role: Role.IT_STAFF, isActive: true },
+    { name: "Clara Staff", email: "clara.staff@tiktockit.com", role: Role.IT_STAFF, isActive: true },
+    // 1+ Inactive IT Staff
+    { name: "Retired Staff", email: "retired.staff@tiktockit.com", role: Role.IT_STAFF, isActive: false },
+    // 1+ Active Administrator
+    { name: "Admin User", email: "admin@tiktockit.com", role: Role.ADMINISTRATOR, isActive: true },
+  ];
+
+  for (const u of usersToSeed) {
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: { name: u.name, role: u.role, isActive: u.isActive },
+      create: {
+        name: u.name,
+        email: u.email,
+        passwordHash: defaultPasswordHash,
+        role: u.role,
+        isActive: u.isActive,
+        mustChangePassword: true,
+      },
+    });
+  }
+
+  console.log("Seeding categories, users, and related systems completed successfully.");
 }
 
 main()
@@ -66,4 +89,5 @@ main()
   .finally(async () => {
     await getPrisma().$disconnect();
   });
+
 

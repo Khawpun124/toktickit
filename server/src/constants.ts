@@ -1,3 +1,6 @@
+export const MIGRATED_USER_INITIAL_PASSWORD = process.env.INITIAL_MIGRATED_PASSWORD || "ChangeMe123!";
+export const INITIAL_MIGRATED_PASSWORD = MIGRATED_USER_INITIAL_PASSWORD;
+
 // BR-21: Allowed attachment file types, extensions, size limits, and count limits
 export class AttachmentConstants {
   static readonly ALLOWED_MIME_TYPES = [
@@ -16,3 +19,4 @@ export class AttachmentConstants {
 
   static readonly MAX_REMOVAL_REASON_LENGTH = 500;
 }
+

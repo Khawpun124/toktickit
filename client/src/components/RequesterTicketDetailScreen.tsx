@@ -17,7 +17,7 @@ import {
   MAX_ACTIVE_ATTACHMENTS,
   MAX_REMOVAL_REASON_LENGTH,
 } from "../constants.js";
-import { useRequester } from "../context/RequesterContext.js";
+import { useAuth } from "../context/AuthContext.js";
 
 interface RequesterTicketDetailScreenProps {
   ticketId?: number;
@@ -49,7 +49,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   ticketId,
   onBack,
 }) => {
-  const { selectedRequester } = useRequester();
+  const { user } = useAuth();
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -89,7 +89,6 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   const [removing, setRemoving] = useState<boolean>(false);
 
   const handleDownloadAttachment = async (att: AttachmentItem) => {
-    if (!selectedRequester) return;
     if (downloadingRef.current === att.id) return;
 
     downloadingRef.current = att.id;
@@ -98,7 +97,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
     setUploadSuccess("");
 
     try {
-      await downloadAttachment(att.id, att.fileName, selectedRequester.id);
+      await downloadAttachment(att.id, att.fileName);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setUploadError(`Failed to download "${att.fileName}": ${err.message}`);
@@ -112,7 +111,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   };
 
   const fetchTicketData = async () => {
-    if (!selectedRequester || isNaN(activeTicketId) || activeTicketId <= 0) {
+    if (isNaN(activeTicketId) || activeTicketId <= 0) {
       handleUnauthorizedOrNotFound();
       return;
     }
@@ -122,8 +121,8 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
 
     try {
       const [ticketData, attachmentData] = await Promise.all([
-        getTicket(activeTicketId, selectedRequester.id),
-        getAttachments(activeTicketId, selectedRequester.id),
+        getTicket(activeTicketId),
+        getAttachments(activeTicketId),
       ]);
       setTicket(ticketData);
       setAttachments(attachmentData);
@@ -137,7 +136,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
 
   useEffect(() => {
     fetchTicketData();
-  }, [activeTicketId, selectedRequester]);
+  }, [activeTicketId]);
 
 
   const activeAttachments = attachments.filter((att) => att.removedAt === null);
@@ -145,7 +144,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !selectedRequester) return;
+    if (!file) return;
 
     setUploadError("");
     setUploadSuccess("");
@@ -174,7 +173,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
     setUploading(true);
 
     try {
-      const newAtt = await uploadAttachment(activeTicketId, file, selectedRequester.id);
+      const newAtt = await uploadAttachment(activeTicketId, file);
       setAttachments((prev) => [...prev, newAtt]);
       setUploadSuccess(`Attachment "${newAtt.fileName}" uploaded successfully.`);
       e.target.value = "";
@@ -196,7 +195,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   };
 
   const handleConfirmRemove = async () => {
-    if (!removeTarget || !selectedRequester) return;
+    if (!removeTarget) return;
 
     const trimmed = removeReason.trim();
     if (!trimmed) {
@@ -213,7 +212,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
     setRemoveReasonError("");
 
     try {
-      const updated = await deleteAttachment(removeTarget.id, removeReason.trim(), selectedRequester.id);
+      const updated = await deleteAttachment(removeTarget.id, removeReason.trim());
       setAttachments((prev) =>
         prev.map((att) =>
           att.id === updated.id
@@ -302,7 +301,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
           </div>
           <div className="col-12 col-sm-6 col-md-3">
             <div className="small text-muted mb-1">Requester</div>
-            <div className="fw-medium">{selectedRequester?.name}</div>
+            <div className="fw-medium">{user?.name}</div>
           </div>
 
           <div className="col-12 col-sm-6 col-md-3">
