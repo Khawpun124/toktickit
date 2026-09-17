@@ -29,6 +29,8 @@ model User {
   tickets            Ticket[]       @relation("TicketRequester")
   ownedTickets       Ticket[]       @relation("TicketOwner")
   sessions           Session[]
+  publicComments     PublicComment[]
+  internalNotes      InternalNote[]
 }
 
 model Session {
@@ -114,6 +116,8 @@ model Ticket {
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   attachments            Attachment[]
+  publicComments         PublicComment[]
+  internalNotes          InternalNote[]
 
   @@index([requesterId])
   @@index([ticketOwnerId])
@@ -137,4 +141,35 @@ model Attachment {
 
   @@index([ticketId])
 }
+
+// ---------------------------------------------------------------------------
+// Lab 3 Issue 3 & Issue 5 — PublicComment and InternalNote models
+// ---------------------------------------------------------------------------
+
+model PublicComment {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  Int
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([authorId])
+}
+
+model InternalNote {
+  id        Int      @id @default(autoincrement())
+  ticketId  Int
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  Int
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([authorId])
+}
+
 
