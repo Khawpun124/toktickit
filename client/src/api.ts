@@ -240,6 +240,7 @@ export interface TicketDetail {
   requestedPriority: "LOW" | "MEDIUM" | "HIGH";
   itPriority: "LOW" | "MEDIUM" | "HIGH" | null;
   currentStatus: string;
+  problemAppearsResolved?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -488,6 +489,84 @@ export async function changePassword(
 
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Lab 3 Issue 3 — Resolution Flag & Public Comments API
+// ---------------------------------------------------------------------------
+
+export async function updateResolutionFlag(
+  ticketId: number
+): Promise<{ id: number; problemAppearsResolved: boolean }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/tickets/${ticketId}/resolution-flag`, {
+      method: "PATCH",
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Unable to update resolution flag");
+  }
+
+  return data;
+}
+
+export interface PublicComment {
+  id: number;
+  ticketId: number;
+  authorId: number;
+  authorName: string;
+  authorRole: UserRole;
+  content: string;
+  createdAt: string;
+}
+
+export async function getPublicComments(ticketId: number): Promise<PublicComment[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/tickets/${ticketId}/comments`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Unable to load public comments");
+  }
+
+  return data;
+}
+
+export async function postPublicComment(
+  ticketId: number,
+  content: string
+): Promise<PublicComment> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/tickets/${ticketId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ content }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Unable to post comment");
+  }
+
+  return data;
+}
+
 
 
 

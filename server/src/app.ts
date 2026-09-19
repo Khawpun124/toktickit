@@ -866,7 +866,155 @@ app.delete("/api/attachments/:id", requireAuth, requirePasswordChanged, async (r
   }
 });
 
+// ---------------------------------------------------------------------------
+// Lab 3 Issue 3 — Resolution Flag & Public Comments Endpoints
+// ---------------------------------------------------------------------------
+
+// 1. PATCH /api/tickets/:id/resolution-flag (BR-12)
+app.patch("/api/tickets/:id/resolution-flag", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const requesterId = req.user!.id;
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+
+    if (!ticket || ticket.requesterId !== requesterId) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    if (ticket.currentStatus === "CLOSED" || ticket.currentStatus === "CANCELLED") {
+      res.status(400).json({ error: "Ticket is already Closed or Cancelled" });
+      return;
+    }
+
+    const updated = await prisma.ticket.update({
+      where: { id: parsedTicketId },
+      data: { problemAppearsResolved: true },
+    });
+
+    res.status(200).json({
+      id: updated.id,
+      problemAppearsResolved: updated.problemAppearsResolved,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to update resolution flag" });
+  }
+});
+
+// 2. POST /api/tickets/:id/comments — Public Comments (BR-13, BR-16)
+app.post("/api/tickets/:id/comments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  const { content } = req.body ?? {};
+  const trimmed = typeof content === "string" ? content.trim() : "";
+
+  if (!trimmed || trimmed.length > 2000) {
+    res.status(400).json({ error: "Comment content is required and must not exceed 2000 characters" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    if (req.user!.role === "REQUESTER" && ticket.requesterId !== req.user!.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const comment = await prisma.publicComment.create({
+      data: {
+        ticketId: parsedTicketId,
+        authorId: req.user!.id,
+        content: trimmed,
+      },
+      include: {
+        author: {
+          select: { name: true, role: true },
+        },
+      },
+    });
+
+    res.status(201).json({
+      id: comment.id,
+      ticketId: comment.ticketId,
+      authorId: comment.authorId,
+      authorName: comment.author.name,
+      authorRole: comment.author.role,
+      content: comment.content,
+      createdAt: comment.createdAt.toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to post comment" });
+  }
+});
+
+// 3. GET /api/tickets/:id/comments — Public Comments List (BR-13)
+app.get("/api/tickets/:id/comments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    if (req.user!.role === "REQUESTER" && ticket.requesterId !== req.user!.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const comments = await prisma.publicComment.findMany({
+      where: { ticketId: parsedTicketId },
+      include: {
+        author: {
+          select: { name: true, role: true },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const result = comments.map((c) => ({
+      id: c.id,
+      ticketId: c.ticketId,
+      authorId: c.authorId,
+      authorName: c.author.name,
+      authorRole: c.author.role,
+      content: c.content,
+      createdAt: c.createdAt.toISOString(),
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load comments" });
+  }
+});
+
 export default app;
+
 
 
 

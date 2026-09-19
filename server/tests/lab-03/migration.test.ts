@@ -21,7 +21,14 @@ describe("Migration Tests (MIG-01, MIG-02, BR-23, BR-24, AC-16)", () => {
   });
 
   afterEach(async () => {
-    await prisma.ticket.deleteMany({ where: { summary: { contains: testEmail } } });
+    await prisma.ticket.deleteMany({
+      where: {
+        OR: [
+          { summary: { contains: testEmail } },
+          { requester: { email: testEmail } },
+        ],
+      },
+    });
     await prisma.user.deleteMany({ where: { email: testEmail } });
     await prisma.requesterUser.deleteMany({ where: { email: testEmail } });
   });
@@ -76,4 +83,63 @@ describe("Migration Tests (MIG-01, MIG-02, BR-23, BR-24, AC-16)", () => {
       expect(t.requester.email).toBe(testEmail);
     }
   });
+
+  it("MIG-03: Upgrades existing Lab 2 database where RequesterUser and Ticket pre-exist before migration", async () => {
+    const preExistingEmail = `pre-mig-${Date.now()}@example.com`;
+    const requester = await prisma.requesterUser.create({
+      data: {
+        name: "Pre-existing Requester",
+        email: preExistingEmail,
+        isActive: true,
+      },
+    });
+
+    const category = await prisma.category.upsert({
+      where: { name: "Software" },
+      update: {},
+      create: { name: "Software" },
+    });
+    const relatedSystem = await prisma.relatedSystem.upsert({
+      where: { name: "Email" },
+      update: {},
+      create: { name: "Email" },
+    });
+
+    const preTicketNumber = `TKT-PRE-${Date.now()}`;
+    await prisma.ticket.create({
+      data: {
+        ticketNumber: preTicketNumber,
+        requesterId: requester.id,
+        categoryId: category.id,
+        relatedSystemId: relatedSystem.id,
+        summary: `Pre-existing Ticket for ${preExistingEmail}`,
+        description: "Simulating pre-migration Lab 2 state with existing ticket and requesterUser",
+        requestedPriority: "HIGH",
+        currentStatus: "NEW",
+      },
+    });
+
+    const result = await runUserMigration(prisma);
+    expect(result.migratedUsersCount).toBeGreaterThan(0);
+
+    const migratedUser = await prisma.user.findUnique({
+      where: { email: preExistingEmail },
+    });
+    expect(migratedUser).not.toBeNull();
+    expect(migratedUser?.role).toBe("REQUESTER");
+    expect(migratedUser?.mustChangePassword).toBe(true);
+
+    const ticket = await prisma.ticket.findUnique({
+      where: { ticketNumber: preTicketNumber },
+      include: { requester: true },
+    });
+    expect(ticket).not.toBeNull();
+    expect(ticket?.requesterId).toBe(migratedUser?.id);
+    expect(ticket?.requester.email).toBe(preExistingEmail);
+
+    await prisma.ticket.deleteMany({ where: { ticketNumber: preTicketNumber } });
+    await prisma.user.deleteMany({ where: { email: preExistingEmail } });
+    await prisma.requesterUser.deleteMany({ where: { email: preExistingEmail } });
+  });
 });
+

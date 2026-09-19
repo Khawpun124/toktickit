@@ -7,8 +7,12 @@ import {
   deleteAttachment,
   downloadAttachment,
   downloadAttachmentUrl,
+  getPublicComments,
+  postPublicComment,
+  updateResolutionFlag,
   TicketDetail,
   AttachmentItem,
+  PublicComment,
 } from "../api.js";
 import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
@@ -88,6 +92,14 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   const [removeReasonError, setRemoveReasonError] = useState<string>("");
   const [removing, setRemoving] = useState<boolean>(false);
 
+  // Public Comments & Resolution Flag state
+  const [comments, setComments] = useState<PublicComment[]>([]);
+  const [commentText, setCommentText] = useState<string>("");
+  const [commentError, setCommentError] = useState<string>("");
+  const [submittingComment, setSubmittingComment] = useState<boolean>(false);
+  const [showResolveModal, setShowResolveModal] = useState<boolean>(false);
+  const [updatingResolution, setUpdatingResolution] = useState<boolean>(false);
+
   const handleDownloadAttachment = async (att: AttachmentItem) => {
     if (downloadingRef.current === att.id) return;
 
@@ -120,12 +132,14 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
     setError("");
 
     try {
-      const [ticketData, attachmentData] = await Promise.all([
+      const [ticketData, attachmentData, commentData] = await Promise.all([
         getTicket(activeTicketId),
         getAttachments(activeTicketId),
+        getPublicComments(activeTicketId).catch(() => []),
       ]);
       setTicket(ticketData);
       setAttachments(attachmentData);
+      setComments(commentData);
     } catch (err: unknown) {
       handleUnauthorizedOrNotFound();
     } finally {
@@ -137,6 +151,46 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   useEffect(() => {
     fetchTicketData();
   }, [activeTicketId]);
+
+  const handleConfirmResolve = async () => {
+    if (!ticket) return;
+    setUpdatingResolution(true);
+    try {
+      await updateResolutionFlag(activeTicketId);
+      setTicket((prev) => (prev ? { ...prev, problemAppearsResolved: true } : prev));
+      setShowResolveModal(false);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to update resolution flag");
+    } finally {
+      setUpdatingResolution(false);
+    }
+  };
+
+  const handlePostComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = commentText.trim();
+    if (!trimmed) {
+      setCommentError("Comment content cannot be empty or whitespace only");
+      return;
+    }
+    if (trimmed.length > 2000) {
+      setCommentError("Comment content must not exceed 2000 characters");
+      return;
+    }
+
+    setSubmittingComment(true);
+    setCommentError("");
+
+    try {
+      const newComment = await postPublicComment(activeTicketId, trimmed);
+      setComments((prev) => [...prev, newComment]);
+      setCommentText("");
+    } catch (err: unknown) {
+      setCommentError(err instanceof Error ? err.message : "Failed to post comment");
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
 
 
   const activeAttachments = attachments.filter((att) => att.removedAt === null);
@@ -275,13 +329,30 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
             <h1 className="h4 font-weight-bold mb-1 text-dark">{ticket.summary}</h1>
             <div className="small text-muted">Created on {formatDate(ticket.createdAt)}</div>
           </div>
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
             <span
               className="badge px-3 py-2"
               style={{ backgroundColor: "var(--zg-pale)", color: "var(--zg-secondary)" }}
             >
               ● {ticket.currentStatus}
             </span>
+
+            {ticket.problemAppearsResolved ? (
+              <span className="badge bg-success text-white px-3 py-2">
+                ✓ Problem Appears Resolved
+              </span>
+            ) : (
+              ticket.currentStatus !== "CLOSED" &&
+              ticket.currentStatus !== "CANCELLED" && (
+                <button
+                  type="button"
+                  className="btn btn-outline-success btn-sm px-3"
+                  onClick={() => setShowResolveModal(true)}
+                >
+                  Mark problem as resolved
+                </button>
+              )
+            )}
           </div>
         </div>
 
@@ -348,8 +419,76 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
         </div>
       </div>
 
+      {/* Public Comments Panel */}
+      <div className="zg-card p-4 mb-4">
+        <h2 className="h5 font-weight-bold mb-3">Public Comments ({comments.length})</h2>
+
+        {/* Comment Thread */}
+        {comments.length === 0 ? (
+          <div className="text-center text-muted p-4 border rounded bg-light small mb-4">
+            No public comments yet.
+          </div>
+        ) : (
+          <div className="d-flex flex-column gap-3 mb-4">
+            {comments.map((c) => {
+              const isStaff = c.authorRole === "IT_STAFF" || c.authorRole === "ADMINISTRATOR";
+              return (
+                <div key={c.id} className={`p-3 rounded border ${isStaff ? "bg-light border-primary" : "bg-white"}`}>
+                  <div className="d-flex align-items-center justify-content-between mb-2">
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="fw-bold small">{c.authorName}</span>
+                      <span className={`badge ${isStaff ? "bg-primary" : "bg-secondary"} text-white`}>
+                        {c.authorRole}
+                      </span>
+                    </div>
+                    <span className="small text-muted">{formatDate(c.createdAt)}</span>
+                  </div>
+                  <div className="text-dark small text-break" style={{ whiteSpace: "pre-wrap" }}>
+                    {c.content}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add Comment Form */}
+        <form onSubmit={handlePostComment}>
+          <div className="mb-2">
+            <label htmlFor="publicCommentInput" className="form-label small fw-bold">
+              Add Public Comment
+            </label>
+            <textarea
+              id="publicCommentInput"
+              className={`form-control form-control-sm ${commentError ? "is-invalid" : ""}`}
+              rows={3}
+              maxLength={2000}
+              placeholder="Write a public comment..."
+              value={commentText}
+              onChange={(e) => {
+                setCommentText(e.target.value);
+                if (commentError) setCommentError("");
+              }}
+              disabled={submittingComment}
+            ></textarea>
+            {commentError && <div className="invalid-feedback small">{commentError}</div>}
+          </div>
+          <div className="d-flex justify-content-between align-items-center">
+            <span className="small text-muted">{commentText.length}/2000 characters</span>
+            <button
+              type="submit"
+              className="btn btn-sm zg-btn-primary px-3"
+              disabled={submittingComment || !commentText.trim()}
+            >
+              {submittingComment ? "Posting..." : "+ Post Comment"}
+            </button>
+          </div>
+        </form>
+      </div>
+
       {/* Attachments Section */}
       <div className="zg-card p-4">
+
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h2 className="h5 font-weight-bold mb-0">Attachments ({activeAttachments.length}/5 active)</h2>
 
@@ -522,6 +661,58 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
           </div>
         </div>
       )}
+
+      {/* Mark Problem as Resolved Confirmation Modal */}
+      {showResolveModal && (
+        <div
+          className="modal fade show d-block"
+          tabIndex={-1}
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title h6">Mark Problem as Resolved</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowResolveModal(false)}
+                  disabled={updatingResolution}
+                  aria-label="Close"
+                ></button>
+              </div>
+
+              <div className="modal-body">
+                <p className="small mb-0">
+                  Are you sure you want to mark this problem as resolved? This indicates to IT Staff that your issue appears resolved, but it does not formally close or cancel the ticket.
+                </p>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setShowResolveModal(false)}
+                  disabled={updatingResolution}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-success px-3"
+                  onClick={handleConfirmResolve}
+                  disabled={updatingResolution}
+                >
+                  {updatingResolution ? "Submitting..." : "Confirm Resolution"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
