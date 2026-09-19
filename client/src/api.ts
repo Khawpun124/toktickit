@@ -219,6 +219,103 @@ export async function getTickets(
   return await res.json();
 }
 
+// Issue 4 — IT Staff Queue interfaces & API
+export interface GetStaffTicketsParams {
+  search?: string;
+  categoryId?: string | number;
+  requestedPriority?: string;
+  itPriority?: string;
+  currentStatus?: string;
+  ticketOwnerId?: string | number;
+  sortBy?: "createdAt" | "ticketNumber" | "itPriority";
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
+export interface StaffTicketListItem {
+  id: number;
+  ticketNumber: string;
+  summary: string;
+  categoryName: string;
+  requestedPriority: "LOW" | "MEDIUM" | "HIGH";
+  itPriority: "LOW" | "MEDIUM" | "HIGH" | null;
+  currentStatus: string;
+  problemAppearsResolved: boolean;
+  ticketOwnerId: number | null;
+  ticketOwnerName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffTicketsResponse {
+  data: StaffTicketListItem[];
+  pagination: PaginationInfo;
+}
+
+export async function getStaffTickets(
+  params: GetStaffTicketsParams
+): Promise<StaffTicketsResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.append("search", params.search);
+  if (params.categoryId) query.append("categoryId", params.categoryId.toString());
+  if (params.requestedPriority) query.append("requestedPriority", params.requestedPriority);
+  if (params.itPriority) query.append("itPriority", params.itPriority);
+  if (params.currentStatus) query.append("currentStatus", params.currentStatus);
+  if (params.ticketOwnerId !== undefined && params.ticketOwnerId !== "") {
+    query.append("ticketOwnerId", params.ticketOwnerId.toString());
+  }
+  if (params.sortBy) query.append("sortBy", params.sortBy);
+  if (params.sortDir) query.append("sortDir", params.sortDir);
+  if (params.page) query.append("page", params.page.toString());
+  if (params.pageSize) query.append("pageSize", params.pageSize.toString());
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/staff/tickets?${query.toString()}`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (res.status === 403) {
+    const err = new Error("Forbidden") as Error & { status?: number };
+    err.status = 403;
+    throw err;
+  }
+
+  if (!res.ok) {
+    throw new Error("Unable to load staff queue tickets");
+  }
+
+  return await res.json();
+}
+
+export interface StaffUserItem {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export async function getStaffUsers(): Promise<StaffUserItem[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/staff/users`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (!res.ok) {
+    throw new Error("Unable to load staff users");
+  }
+
+  return await res.json();
+}
+
 // Issue 5 — Requester Ticket Detail & Attachments interfaces
 export interface AttachmentItem {
   id: number;
