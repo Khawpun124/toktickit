@@ -124,7 +124,7 @@ npm install
 
 ---
 
-### 3. Database Initialization (Docker & Prisma)
+### 3. Database Initialization & Migration (Docker & Prisma)
 
 Start the PostgreSQL database container via Docker Compose:
 
@@ -132,14 +132,29 @@ Start the PostgreSQL database container via Docker Compose:
 docker compose up -d
 ```
 
+#### Option A: Fresh Database Installation
 Generate the Prisma client, apply database migrations, and seed initial data:
 
 ```bash
 cd server
 npx prisma generate
-npx prisma migrate dev
+npx prisma migrate deploy
 npx prisma db seed
 ```
+
+#### Option B: Upgrading Existing Lab 2 Database
+If upgrading an existing database that contains pre-existing Lab 2 data (`RequesterUser` and `Ticket` records):
+
+```bash
+cd server
+npx prisma generate
+npx prisma migrate deploy
+npm run migrate:users
+npx prisma migrate deploy
+npx prisma db seed
+```
+*(Note: `make_ticket_requester_fk_deferrable` drops foreign key constraints temporarily, `npm run migrate:users` copies `RequesterUser` data to `User` and updates `Ticket.requesterId` mapping by email/id, and `restore_ticket_requester_fk` restores foreign key constraints safely).*
+
 
 #### Seed Data Content & Initial Credentials:
 - **Categories (4)**: Account and Access, Hardware, Software, Network.
