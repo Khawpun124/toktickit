@@ -1013,6 +1013,192 @@ app.get("/api/tickets/:id/comments", requireAuth, requirePasswordChanged, async 
   }
 });
 
+// ---------------------------------------------------------------------------
+// Lab 3 Issue 4 — IT Staff Ticket Queue Endpoint (FR-07, API-16)
+// ---------------------------------------------------------------------------
+
+// 1. GET /api/staff/tickets — IT Staff Ticket Queue (search/filter/sort/paginate)
+app.get("/api/staff/tickets", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  if (req.user!.role === "REQUESTER") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const {
+    search,
+    categoryId,
+    requestedPriority,
+    itPriority,
+    currentStatus,
+    ticketOwnerId,
+    sortBy,
+    sortDir,
+    page,
+    pageSize,
+  } = req.query;
+
+  const whereClause: any = {};
+
+  // Search filter (ticketNumber partial or summary case-insensitive partial)
+  if (search && typeof search === "string" && search.trim() !== "") {
+    const term = search.trim();
+    whereClause.OR = [
+      { ticketNumber: { contains: term, mode: "insensitive" } },
+      { summary: { contains: term, mode: "insensitive" } },
+    ];
+  }
+
+  // Category filter
+  if (categoryId) {
+    const parsedCatId = parseInt(categoryId as string, 10);
+    if (!isNaN(parsedCatId)) {
+      whereClause.categoryId = parsedCatId;
+    }
+  }
+
+  // Requested Priority filter
+  if (requestedPriority && ["LOW", "MEDIUM", "HIGH"].includes(requestedPriority as string)) {
+    whereClause.requestedPriority = requestedPriority;
+  }
+
+  // IT Priority filter
+  if (itPriority && ["LOW", "MEDIUM", "HIGH"].includes(itPriority as string)) {
+    whereClause.itPriority = itPriority;
+  }
+
+  // Current Status filter
+  if (currentStatus && typeof currentStatus === "string" && currentStatus.trim() !== "") {
+    whereClause.currentStatus = currentStatus.trim();
+  }
+
+  // Ticket Owner filter ("unassigned" or numeric staff ID)
+  if (ticketOwnerId !== undefined && ticketOwnerId !== null && ticketOwnerId !== "") {
+    if (ticketOwnerId === "unassigned") {
+      whereClause.ticketOwnerId = null;
+    } else {
+      const parsedOwnerId = parseInt(ticketOwnerId as string, 10);
+      if (!isNaN(parsedOwnerId)) {
+        whereClause.ticketOwnerId = parsedOwnerId;
+      }
+    }
+  }
+
+  // Sorting
+  let sortField = "createdAt";
+  if (sortBy === "ticketNumber") {
+    sortField = "ticketNumber";
+  } else if (sortBy === "itPriority") {
+    sortField = "itPriority";
+  }
+
+  const sortOrder = sortDir === "asc" ? "asc" : "desc";
+
+  const orderByClause: any[] = [
+    { [sortField]: sortOrder },
+  ];
+
+  if (sortField !== "id") {
+    orderByClause.push({ id: "desc" });
+  }
+
+  // Pagination (default page 1, pageSize 10, clamped 1-50)
+  let parsedPage = parseInt(page as string, 10);
+  if (isNaN(parsedPage) || parsedPage < 1) {
+    parsedPage = 1;
+  }
+
+  let parsedPageSize = parseInt(pageSize as string, 10);
+  if (isNaN(parsedPageSize) || parsedPageSize < 1 || parsedPageSize > 50) {
+    parsedPageSize = 10;
+  }
+
+  const skip = (parsedPage - 1) * parsedPageSize;
+  const take = parsedPageSize;
+
+  try {
+    const prisma = getPrisma();
+    const [totalItems, tickets] = await Promise.all([
+      prisma.ticket.count({ where: whereClause }),
+      prisma.ticket.findMany({
+        where: whereClause,
+        include: {
+          category: { select: { name: true } },
+          relatedSystem: { select: { name: true } },
+          requester: { select: { id: true, name: true, email: true } },
+          ticketOwner: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: orderByClause,
+        skip,
+        take,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(totalItems / parsedPageSize) || 0;
+
+    const data = tickets.map((t) => ({
+      id: t.id,
+      ticketNumber: t.ticketNumber,
+      requesterId: t.requesterId,
+      requesterName: t.requester.name,
+      categoryId: t.categoryId,
+      categoryName: t.category.name,
+      relatedSystemId: t.relatedSystemId,
+      relatedSystemName: t.relatedSystem.name,
+      summary: t.summary,
+      description: t.description,
+      requestedPriority: t.requestedPriority,
+      itPriority: t.itPriority,
+      currentStatus: t.currentStatus,
+      problemAppearsResolved: t.problemAppearsResolved,
+      ticketOwnerId: t.ticketOwnerId,
+      ticketOwnerName: t.ticketOwner ? t.ticketOwner.name : null,
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
+    }));
+
+    res.status(200).json({
+      data,
+      pagination: {
+        page: parsedPage,
+        pageSize: parsedPageSize,
+        totalItems,
+        totalPages,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load staff queue tickets" });
+  }
+});
+
+// 2. GET /api/staff/users — Returns list of active IT Staff and Administrator users for dropdowns
+app.get("/api/staff/users", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  if (req.user!.role === "REQUESTER") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const users = await prisma.user.findMany({
+      where: {
+        role: { in: ["IT_STAFF", "ADMINISTRATOR"] },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      },
+      orderBy: { name: "asc" },
+    });
+
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load staff users" });
+  }
+});
+
 export default app;
 
 

@@ -15,7 +15,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
   const currentUser = user;
 
   const currentTab =
-    activeTab || (location.pathname === "/tickets/new" ? "create-ticket" : "my-tickets");
+    activeTab ||
+    (location.pathname === "/tickets/new"
+      ? "create-ticket"
+      : location.pathname.startsWith("/staff/tickets")
+      ? "my-queue"
+      : "my-tickets");
 
   const handleNavMyTickets = () => {
     if (onSelectTab) onSelectTab("my-tickets");
@@ -25,6 +30,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
   const handleNavCreateTicket = () => {
     if (onSelectTab) onSelectTab("create-ticket");
     navigate("/tickets/new");
+  };
+
+  const handleNavMyQueue = () => {
+    if (onSelectTab) onSelectTab("my-queue");
+    navigate("/staff/tickets");
   };
 
   const handleLogout = async () => {
@@ -70,7 +80,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
 
           {currentUser && (
             <nav className="d-flex gap-2">
-              {(currentUser.role === "REQUESTER" || currentUser.role === "IT_STAFF") && (
+              {currentUser.role === "REQUESTER" && (
                 <>
                   <button
                     onClick={handleNavMyTickets}
@@ -81,6 +91,30 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
                     }`}
                   >
                     My Tickets
+                  </button>
+                  <button
+                    onClick={handleNavCreateTicket}
+                    className={`btn btn-sm ${
+                      currentTab === "create-ticket"
+                        ? "btn-light fw-bold text-success"
+                        : "btn-outline-light"
+                    }`}
+                  >
+                    + Create Ticket
+                  </button>
+                </>
+              )}
+              {(currentUser.role === "IT_STAFF" || currentUser.role === "ADMINISTRATOR") && (
+                <>
+                  <button
+                    onClick={handleNavMyQueue}
+                    className={`btn btn-sm ${
+                      currentTab === "my-queue"
+                        ? "btn-light fw-bold text-success"
+                        : "btn-outline-light"
+                    }`}
+                  >
+                    My Queue
                   </button>
                   <button
                     onClick={handleNavCreateTicket}
