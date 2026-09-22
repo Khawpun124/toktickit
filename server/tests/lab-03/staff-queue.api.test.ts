@@ -226,4 +226,54 @@ describe("IT Staff Ticket Queue API Tests (API-16, FR-07, AC-14)", () => {
     const sortedNums = [...nums].sort();
     expect(nums).toEqual(sortedNums);
   });
+
+  it("API-16: Rejects invalid currentStatus param with 400 Bad Request", async () => {
+    const res = await request(app)
+      .get("/api/staff/tickets?currentStatus=asdf")
+      .set("Cookie", [staffCookie]);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("Invalid currentStatus");
+  });
+
+  it("API-16: Accepts valid currentStatus param IN_PROGRESS", async () => {
+    const res = await request(app)
+      .get("/api/staff/tickets?currentStatus=IN_PROGRESS")
+      .set("Cookie", [staffCookie]);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+    for (const t of res.body.data) {
+      expect(t.currentStatus).toBe("IN_PROGRESS");
+    }
+  });
+
+  it("GET /api/staff/tickets/:id - IT Staff can retrieve staff ticket detail (403 for Requester, 404 for non-existent)", async () => {
+    const tId = createdTicketIds[0];
+
+    // Staff user can retrieve staff ticket detail
+    const resStaff = await request(app)
+      .get(`/api/staff/tickets/${tId}`)
+      .set("Cookie", [staffCookie]);
+
+    expect(resStaff.status).toBe(200);
+    expect(resStaff.body.id).toBe(tId);
+    expect(resStaff.body).toHaveProperty("ticketNumber");
+    expect(resStaff.body).toHaveProperty("requesterName");
+    expect(resStaff.body).toHaveProperty("categoryName");
+
+    // Requester gets 403 Forbidden
+    const resReq = await request(app)
+      .get(`/api/staff/tickets/${tId}`)
+      .set("Cookie", [requesterCookie]);
+
+    expect(resReq.status).toBe(403);
+
+    // Non-existent ticket returns 404 Not Found
+    const res404 = await request(app)
+      .get("/api/staff/tickets/999999")
+      .set("Cookie", [staffCookie]);
+
+    expect(res404.status).toBe(404);
+  });
 });

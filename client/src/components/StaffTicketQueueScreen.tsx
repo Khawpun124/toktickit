@@ -441,7 +441,7 @@ export const StaffTicketQueueScreen: React.FC = () => {
                     <tr
                       key={t.id}
                       style={{ cursor: "pointer" }}
-                      onClick={() => navigate(`/tickets/${t.id}`)}
+                      onClick={() => navigate(`/staff/tickets/${t.id}`)}
                     >
                       <td className="ps-3 fw-bold text-primary">{t.ticketNumber}</td>
                       <td className="small text-muted">
@@ -484,7 +484,7 @@ export const StaffTicketQueueScreen: React.FC = () => {
                       </td>
                       <td className="pe-3 text-end" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => navigate(`/tickets/${t.id}`)}
+                          onClick={() => navigate(`/staff/tickets/${t.id}`)}
                           className="btn btn-sm btn-outline-primary"
                         >
                           View
@@ -503,7 +503,7 @@ export const StaffTicketQueueScreen: React.FC = () => {
               <div
                 key={t.id}
                 className="card border-0 shadow-sm"
-                onClick={() => navigate(`/tickets/${t.id}`)}
+                onClick={() => navigate(`/staff/tickets/${t.id}`)}
                 style={{ cursor: "pointer" }}
               >
                 <div className="card-body p-3">

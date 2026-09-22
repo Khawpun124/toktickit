@@ -292,6 +292,59 @@ export async function getStaffTickets(
   return await res.json();
 }
 
+export interface StaffTicketDetail {
+  id: number;
+  ticketNumber: string;
+  requesterId: number;
+  requesterName: string;
+  requesterEmail: string;
+  categoryId: number;
+  categoryName: string;
+  relatedSystemId: number;
+  relatedSystemName: string;
+  summary: string;
+  description: string;
+  requestedPriority: "LOW" | "MEDIUM" | "HIGH";
+  itPriority: "LOW" | "MEDIUM" | "HIGH" | null;
+  currentStatus: string;
+  problemAppearsResolved: boolean;
+  ticketOwnerId: number | null;
+  ticketOwnerName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getStaffTicketDetail(
+  id: number | string
+): Promise<StaffTicketDetail> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/staff/tickets/${id}`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (res.status === 403) {
+    const err = new Error("Forbidden") as Error & { status?: number };
+    err.status = 403;
+    throw err;
+  }
+
+  if (res.status === 404) {
+    const err = new Error("Ticket not found") as Error & { status?: number };
+    err.status = 404;
+    throw err;
+  }
+
+  if (!res.ok) {
+    throw new Error("Unable to load staff ticket details");
+  }
+
+  return await res.json();
+}
+
 export interface StaffUserItem {
   id: number;
   name: string;

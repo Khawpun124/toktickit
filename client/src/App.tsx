@@ -8,6 +8,7 @@ import { CreateTicketScreen } from "./components/CreateTicketScreen.js";
 import { MyTicketsScreen } from "./components/MyTicketsScreen.js";
 import { RequesterTicketDetailScreen } from "./components/RequesterTicketDetailScreen.js";
 import { StaffTicketQueueScreen } from "./components/StaffTicketQueueScreen.js";
+import { StaffTicketDetailScreen } from "./components/StaffTicketDetailScreen.js";
 import "./index.css";
 
 export function AppContent() {
@@ -42,6 +43,7 @@ export function AppContent() {
         <Route path="/tickets/new" element={<CreateTicketScreen />} />
         <Route path="/tickets/:id" element={<RequesterTicketDetailScreen />} />
         <Route path="/staff/tickets" element={<StaffTicketQueueScreen />} />
+        <Route path="/staff/tickets/:id" element={<StaffTicketDetailScreen />} />
         <Route path="*" element={<Navigate to={defaultPath} replace />} />
       </Routes>
     );

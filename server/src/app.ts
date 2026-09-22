@@ -1067,8 +1067,25 @@ app.get("/api/staff/tickets", requireAuth, requirePasswordChanged, async (req: R
   }
 
   // Current Status filter
-  if (currentStatus && typeof currentStatus === "string" && currentStatus.trim() !== "") {
-    whereClause.currentStatus = currentStatus.trim();
+  const validStatuses = [
+    "NEW",
+    "OPEN",
+    "IN_PROGRESS",
+    "WAITING_FOR_REQUESTER",
+    "RESOLVED",
+    "CLOSED",
+    "REOPENED",
+    "CANCELLED",
+  ];
+  if (currentStatus !== undefined && currentStatus !== null && (currentStatus as string).trim() !== "") {
+    const trimmedStatus = (currentStatus as string).trim();
+    if (!validStatuses.includes(trimmedStatus)) {
+      res.status(400).json({
+        error: `Invalid currentStatus. Allowed values: ${validStatuses.join(", ")}`,
+      });
+      return;
+    }
+    whereClause.currentStatus = trimmedStatus;
   }
 
   // Ticket Owner filter ("unassigned" or numeric staff ID)
@@ -1167,6 +1184,62 @@ app.get("/api/staff/tickets", requireAuth, requirePasswordChanged, async (req: R
     });
   } catch (error) {
     res.status(500).json({ error: "Unable to load staff queue tickets" });
+  }
+});
+
+// 2. GET /api/staff/tickets/:id — Basic IT Staff Ticket Detail (FR-07, Endpoint 12)
+app.get("/api/staff/tickets/:id", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  if (req.user!.role === "REQUESTER") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: parsedTicketId },
+      include: {
+        category: { select: { name: true } },
+        relatedSystem: { select: { name: true } },
+        requester: { select: { id: true, name: true, email: true } },
+        ticketOwner: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    res.status(200).json({
+      id: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      requesterId: ticket.requesterId,
+      requesterName: ticket.requester.name,
+      requesterEmail: ticket.requester.email,
+      categoryId: ticket.categoryId,
+      categoryName: ticket.category.name,
+      relatedSystemId: ticket.relatedSystemId,
+      relatedSystemName: ticket.relatedSystem.name,
+      summary: ticket.summary,
+      description: ticket.description,
+      requestedPriority: ticket.requestedPriority,
+      itPriority: ticket.itPriority,
+      currentStatus: ticket.currentStatus,
+      problemAppearsResolved: ticket.problemAppearsResolved,
+      ticketOwnerId: ticket.ticketOwnerId,
+      ticketOwnerName: ticket.ticketOwner ? ticket.ticketOwner.name : null,
+      createdAt: ticket.createdAt.toISOString(),
+      updatedAt: ticket.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load staff ticket detail" });
   }
 });
 
