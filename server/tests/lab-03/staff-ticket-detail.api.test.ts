@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import request from "supertest";
+import path from "path";
+import fs from "fs";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
 import { Role } from "@prisma/client";
@@ -350,6 +352,18 @@ describe("IT Staff Ticket Detail API Tests (Endpoints 13-15, 17 — BR-08-11, BR
     expect(res2.status).toBe(400);
   });
 
+  it("Endpoint 17: Rejects note content exceeding 2000 characters (400)", async () => {
+    const longContent = "a".repeat(2001);
+    const res = await request(app)
+      .post(`/api/tickets/${ticketId}/notes`)
+      .set("Cookie", staffCookie)
+      .send({ content: longContent });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatch(/exceed 2000 characters/i);
+  });
+
   it("Endpoint 17: Admin can also create internal notes (BR-14)", async () => {
     const res = await request(app)
       .post(`/api/tickets/${ticketId}/notes`)
@@ -358,5 +372,63 @@ describe("IT Staff Ticket Detail API Tests (Endpoints 13-15, 17 — BR-08-11, BR
 
     expect(res.status).toBe(201);
     expect(res.body.authorRole).toBe("ADMINISTRATOR");
+  });
+
+  // ── Attachment endpoints IT Staff / Admin access regression tests ────────
+
+  it("Attachments: IT Staff can list attachments for a ticket owned by another user", async () => {
+    const att = await prisma.attachment.create({
+      data: {
+        ticketId,
+        fileName: "staff-accessible.png",
+        storedFileName: "stored_staff_accessible.png",
+        mimeType: "image/png",
+        sizeBytes: 500,
+      },
+    });
+
+    const res = await request(app)
+      .get(`/api/tickets/${ticketId}/attachments`)
+      .set("Cookie", staffCookie);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.some((a: any) => a.id === att.id)).toBe(true);
+
+    await prisma.attachment.deleteMany({ where: { id: att.id } });
+  });
+
+  it("Attachments: IT Staff can download an attachment for a ticket owned by another user", async () => {
+    // Create actual temporary dummy file in uploads/attachments to test sendFile
+    const uploadDir = path.resolve(process.cwd(), "uploads/attachments");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    const dummyStoredName = `test-staff-download-${Date.now()}.png`;
+    const dummyPath = path.join(uploadDir, dummyStoredName);
+    fs.writeFileSync(dummyPath, "dummy-image-binary-data");
+
+    const att = await prisma.attachment.create({
+      data: {
+        ticketId,
+        fileName: "user-ticket-attachment.png",
+        storedFileName: dummyStoredName,
+        mimeType: "image/png",
+        sizeBytes: 100,
+      },
+    });
+
+    const res = await request(app)
+      .get(`/api/attachments/${att.id}/download`)
+      .set("Cookie", staffCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("image/png");
+
+    // Clean up DB and disk file
+    await prisma.attachment.deleteMany({ where: { id: att.id } });
+    if (fs.existsSync(dummyPath)) {
+      fs.unlinkSync(dummyPath);
+    }
   });
 });

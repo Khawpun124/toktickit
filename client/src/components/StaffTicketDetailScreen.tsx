@@ -34,8 +34,20 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   CANCELLED: [],
 };
 
-// Statuses that require user confirmation before applying
-const CONFIRM_TRANSITIONS = new Set(["CANCELLED", "RESOLVED", "CLOSED", "REOPENED"]);
+// Status transition pairs that require user confirmation before applying (per Lab 3 Specification matrix)
+const CONFIRM_TRANSITION_PAIRS = new Set([
+  "NEW->CANCELLED",
+  "OPEN->CANCELLED",
+  "IN_PROGRESS->RESOLVED",
+  "IN_PROGRESS->CANCELLED",
+  "WAITING_FOR_REQUESTER->RESOLVED",
+  "WAITING_FOR_REQUESTER->CANCELLED",
+  "CLOSED->REOPENED",
+]);
+
+export const isConfirmationRequired = (fromStatus: string, toStatus: string): boolean => {
+  return CONFIRM_TRANSITION_PAIRS.has(`${fromStatus}->${toStatus}`);
+};
 
 // Active (non-terminal) statuses — CLOSED and CANCELLED are terminal
 const STATUS_LABELS: Record<string, string> = {
@@ -127,6 +139,7 @@ export const StaffTicketDetailScreen: React.FC = () => {
   // ── Attachments ──────────────────────────────────────────────────────────
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // ── Success flash ────────────────────────────────────────────────────────
@@ -187,11 +200,15 @@ export const StaffTicketDetailScreen: React.FC = () => {
   const loadAttachments = useCallback(async () => {
     if (!ticket) return;
     setAttachmentsLoading(true);
+    setAttachmentsError(null);
     try {
       const data = await getAttachments(ticket.id);
       setAttachments(data);
-    } catch { /* non-fatal */ }
-    setAttachmentsLoading(false);
+    } catch (err: any) {
+      setAttachmentsError(err.message || "Unable to load attachments");
+    } finally {
+      setAttachmentsLoading(false);
+    }
   }, [ticket]);
 
   useEffect(() => {
@@ -256,8 +273,8 @@ export const StaffTicketDetailScreen: React.FC = () => {
     const newStatus = e.target.value;
     if (!newStatus) return;
 
-    // Confirmation for irreversible or high-impact transitions
-    if (CONFIRM_TRANSITIONS.has(newStatus)) {
+    // Confirmation for specific transitions per Status Transition Matrix
+    if (isConfirmationRequired(ticket.currentStatus, newStatus)) {
       const label = STATUS_LABELS[newStatus] ?? newStatus;
       const confirmed = window.confirm(
         `Transition ticket to "${label}"?\n\nThis action may be difficult to reverse. Please confirm.`
@@ -668,9 +685,12 @@ export const StaffTicketDetailScreen: React.FC = () => {
                   {downloadError && (
                     <div className="alert alert-danger py-2 mb-3 small">{downloadError}</div>
                   )}
+                  {attachmentsError && (
+                    <div className="alert alert-danger py-2 mb-3 small" id="staff-attachments-error">{attachmentsError}</div>
+                  )}
                   {attachmentsLoading ? (
                     <div className="text-muted small text-center py-3">Loading attachments…</div>
-                  ) : attachments.length === 0 ? (
+                  ) : attachmentsError ? null : attachments.length === 0 ? (
                     <p className="text-muted small">No attachments found.</p>
                   ) : (
                     <div className="list-group list-group-flush">

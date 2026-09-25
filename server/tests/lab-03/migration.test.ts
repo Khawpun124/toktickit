@@ -94,6 +94,20 @@ describe("Migration Tests (MIG-01, MIG-02, BR-23, BR-24, AC-16)", () => {
       },
     });
 
+    await prisma.user.upsert({
+      where: { email: preExistingEmail },
+      update: {},
+      create: {
+        id: requester.id,
+        name: requester.name,
+        email: requester.email,
+        passwordHash: "dummyhash",
+        role: "REQUESTER",
+        mustChangePassword: true,
+        isActive: true,
+      },
+    });
+
     const category = await prisma.category.upsert({
       where: { name: "Software" },
       update: {},

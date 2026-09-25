@@ -731,10 +731,8 @@ app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, as
   });
 });
 
-// 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket
+// 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket (or IT Staff/Admin)
 app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
-  const requesterId = req.user!.id;
-
   const parsedTicketId = parseInt(req.params.id, 10);
   if (isNaN(parsedTicketId)) {
     res.status(404).json({ error: "Ticket not found" });
@@ -744,8 +742,20 @@ app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, asy
   try {
     const prisma = getPrisma();
     const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
-    if (!ticket || ticket.requesterId !== requesterId) {
+    if (!ticket) {
       res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const isStaffOrAdmin = req.user!.role === "IT_STAFF" || req.user!.role === "ADMINISTRATOR";
+    const isOwner = req.user!.role === "REQUESTER" && ticket.requesterId === req.user!.id;
+
+    if (!isStaffOrAdmin && !isOwner) {
+      if (req.user!.role === "REQUESTER") {
+        res.status(404).json({ error: "Ticket not found" });
+      } else {
+        res.status(403).json({ error: "Forbidden" });
+      }
       return;
     }
 
@@ -769,10 +779,8 @@ app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, asy
   }
 });
 
-// 9. GET /api/attachments/:id/download -> Download an active, owned Attachment (BR-25)
+// 9. GET /api/attachments/:id/download -> Download an active, owned Attachment (or IT Staff/Admin) (BR-25)
 app.get("/api/attachments/:id/download", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
-  const requesterId = req.user!.id;
-
   const parsedAttachmentId = parseInt(req.params.id, 10);
   if (isNaN(parsedAttachmentId)) {
     res.status(404).json({ error: "Attachment not found" });
@@ -786,8 +794,20 @@ app.get("/api/attachments/:id/download", requireAuth, requirePasswordChanged, as
       include: { ticket: true },
     });
 
-    if (!attachment || attachment.ticket.requesterId !== requesterId || attachment.removedAt !== null) {
+    if (!attachment || attachment.removedAt !== null) {
       res.status(404).json({ error: "Attachment not found" });
+      return;
+    }
+
+    const isStaffOrAdmin = req.user!.role === "IT_STAFF" || req.user!.role === "ADMINISTRATOR";
+    const isOwner = req.user!.role === "REQUESTER" && attachment.ticket.requesterId === req.user!.id;
+
+    if (!isStaffOrAdmin && !isOwner) {
+      if (req.user!.role === "REQUESTER") {
+        res.status(404).json({ error: "Ticket not found" });
+      } else {
+        res.status(403).json({ error: "Forbidden" });
+      }
       return;
     }
 
@@ -1453,6 +1473,11 @@ app.post("/api/tickets/:id/notes", requireAuth, requirePasswordChanged, async (r
   const { content } = req.body as { content: string };
   if (!content || typeof content !== "string" || content.trim().length === 0) {
     res.status(400).json({ error: "Note content cannot be empty or whitespace-only" });
+    return;
+  }
+
+  if (content.trim().length > 2000) {
+    res.status(400).json({ error: "Note content is required and must not exceed 2000 characters" });
     return;
   }
 

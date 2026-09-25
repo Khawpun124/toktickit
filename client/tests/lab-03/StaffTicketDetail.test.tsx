@@ -160,4 +160,77 @@ describe("StaffTicketDetailScreen Tests (UI-08, UI-09, UI-10)", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("Status Transition Confirmation: RESOLVED -> CLOSED and RESOLVED -> REOPENED do NOT prompt confirm", async () => {
+    vi.spyOn(api, "getMe").mockResolvedValue(mockStaffUser);
+    const resolvedTicket: api.StaffTicketDetail = {
+      ...mockTicketDetail,
+      currentStatus: "RESOLVED",
+    };
+    vi.spyOn(api, "getStaffTicketDetail").mockResolvedValue(resolvedTicket);
+    vi.spyOn(api, "setTicketStatus").mockResolvedValue({ id: 101, currentStatus: "CLOSED" });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByText("TKT-2026-000001")).toBeInTheDocument();
+    });
+
+    const statusSelect = screen.getByLabelText("Select new ticket status") as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: "CLOSED" } });
+
+    await waitFor(() => {
+      expect(api.setTicketStatus).toHaveBeenCalledWith(101, "CLOSED");
+    });
+    // Confirmation MUST NOT be requested for RESOLVED -> CLOSED per matrix
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it("Status Transition Confirmation: OPEN -> CANCELLED DOES prompt window.confirm", async () => {
+    vi.spyOn(api, "getMe").mockResolvedValue(mockStaffUser);
+    const openTicket: api.StaffTicketDetail = {
+      ...mockTicketDetail,
+      currentStatus: "OPEN",
+    };
+    vi.spyOn(api, "getStaffTicketDetail").mockResolvedValue(openTicket);
+    vi.spyOn(api, "setTicketStatus").mockResolvedValue({ id: 101, currentStatus: "CANCELLED" });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByText("TKT-2026-000001")).toBeInTheDocument();
+    });
+
+    const statusSelect = screen.getByLabelText("Select new ticket status") as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: "CANCELLED" } });
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+      expect(api.setTicketStatus).toHaveBeenCalledWith(101, "CANCELLED");
+    });
+  });
+
+  it("Attachments: displays error message when API call fails instead of silent empty list", async () => {
+    vi.spyOn(api, "getMe").mockResolvedValue(mockStaffUser);
+    vi.spyOn(api, "getAttachments").mockRejectedValue(new Error("Unable to load attachments"));
+
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByText("TKT-2026-000001")).toBeInTheDocument();
+    });
+
+    // Switch to Attachments tab
+    const attachmentsTab = screen.getByRole("tab", { name: /Attachments/i });
+    fireEvent.click(attachmentsTab);
+
+    await waitFor(() => {
+      expect(screen.getByText("Unable to load attachments")).toBeInTheDocument();
+      expect(screen.queryByText("No attachments found.")).not.toBeInTheDocument();
+    });
+  });
 });
