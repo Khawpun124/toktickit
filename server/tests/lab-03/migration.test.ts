@@ -86,8 +86,21 @@ describe("Migration Tests (MIG-01, MIG-02, BR-23, BR-24, AC-16)", () => {
 
   it("MIG-03: Upgrades existing Lab 2 database where RequesterUser and Ticket pre-exist before migration", async () => {
     const preExistingEmail = `pre-mig-${Date.now()}@example.com`;
+
+    const user = await prisma.user.create({
+      data: {
+        name: "Pre-existing Requester",
+        email: preExistingEmail,
+        passwordHash: "dummyhash",
+        role: "REQUESTER",
+        mustChangePassword: true,
+        isActive: true,
+      },
+    });
+
     const requester = await prisma.requesterUser.create({
       data: {
+        id: user.id,
         name: "Pre-existing Requester",
         email: preExistingEmail,
         isActive: true,
@@ -109,7 +122,7 @@ describe("Migration Tests (MIG-01, MIG-02, BR-23, BR-24, AC-16)", () => {
     await prisma.ticket.create({
       data: {
         ticketNumber: preTicketNumber,
-        requesterId: requester.id,
+        requesterId: user.id,
         categoryId: category.id,
         relatedSystemId: relatedSystem.id,
         summary: `Pre-existing Ticket for ${preExistingEmail}`,

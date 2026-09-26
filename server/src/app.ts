@@ -731,10 +731,8 @@ app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, as
   });
 });
 
-// 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket
+// 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket (or IT Staff/Admin)
 app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
-  const requesterId = req.user!.id;
-
   const parsedTicketId = parseInt(req.params.id, 10);
   if (isNaN(parsedTicketId)) {
     res.status(404).json({ error: "Ticket not found" });
@@ -744,8 +742,20 @@ app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, asy
   try {
     const prisma = getPrisma();
     const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
-    if (!ticket || ticket.requesterId !== requesterId) {
+    if (!ticket) {
       res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const isStaffOrAdmin = req.user!.role === "IT_STAFF" || req.user!.role === "ADMINISTRATOR";
+    const isOwner = req.user!.role === "REQUESTER" && ticket.requesterId === req.user!.id;
+
+    if (!isStaffOrAdmin && !isOwner) {
+      if (req.user!.role === "REQUESTER") {
+        res.status(404).json({ error: "Ticket not found" });
+      } else {
+        res.status(403).json({ error: "Forbidden" });
+      }
       return;
     }
 
@@ -769,10 +779,8 @@ app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, asy
   }
 });
 
-// 9. GET /api/attachments/:id/download -> Download an active, owned Attachment (BR-25)
+// 9. GET /api/attachments/:id/download -> Download an active, owned Attachment (or IT Staff/Admin) (BR-25)
 app.get("/api/attachments/:id/download", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
-  const requesterId = req.user!.id;
-
   const parsedAttachmentId = parseInt(req.params.id, 10);
   if (isNaN(parsedAttachmentId)) {
     res.status(404).json({ error: "Attachment not found" });
@@ -786,8 +794,20 @@ app.get("/api/attachments/:id/download", requireAuth, requirePasswordChanged, as
       include: { ticket: true },
     });
 
-    if (!attachment || attachment.ticket.requesterId !== requesterId || attachment.removedAt !== null) {
+    if (!attachment || attachment.removedAt !== null) {
       res.status(404).json({ error: "Attachment not found" });
+      return;
+    }
+
+    const isStaffOrAdmin = req.user!.role === "IT_STAFF" || req.user!.role === "ADMINISTRATOR";
+    const isOwner = req.user!.role === "REQUESTER" && attachment.ticket.requesterId === req.user!.id;
+
+    if (!isStaffOrAdmin && !isOwner) {
+      if (req.user!.role === "REQUESTER") {
+        res.status(404).json({ error: "Ticket not found" });
+      } else {
+        res.status(403).json({ error: "Forbidden" });
+      }
       return;
     }
 
@@ -1269,6 +1289,276 @@ app.get("/api/staff/users", requireAuth, requirePasswordChanged, async (req: Req
     res.status(200).json(users);
   } catch (error) {
     res.status(500).json({ error: "Unable to load staff users" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Issue 5 — IT Staff Ticket Operations (Endpoints 13–15, 17)
+// ---------------------------------------------------------------------------
+
+/** Status Transition Matrix (BR-11). Key = from, Value = allowed "to" states. */
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  NEW: ["OPEN", "CANCELLED"],
+  OPEN: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["WAITING_FOR_REQUESTER", "RESOLVED", "CANCELLED"],
+  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "RESOLVED", "CANCELLED"],
+  RESOLVED: ["CLOSED", "REOPENED"],
+  CLOSED: ["REOPENED"],
+  REOPENED: ["OPEN"],
+  CANCELLED: [],
+};
+
+// Endpoint 13 — PATCH /api/staff/tickets/:id/owner (BR-08, BR-09)
+app.patch("/api/staff/tickets/:id/owner", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  if (req.user!.role === "REQUESTER") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  const { ticketOwnerId } = req.body as { ticketOwnerId: number | null };
+
+  try {
+    const prisma = getPrisma();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    // null = unassign
+    if (ticketOwnerId !== null && ticketOwnerId !== undefined) {
+      const targetUser = await prisma.user.findUnique({ where: { id: ticketOwnerId } });
+      if (!targetUser || !targetUser.isActive || (targetUser.role !== "IT_STAFF" && targetUser.role !== "ADMINISTRATOR")) {
+        res.status(400).json({ error: "Target user is not an active IT Staff or Administrator" });
+        return;
+      }
+    }
+
+    const updated = await prisma.ticket.update({
+      where: { id: parsedTicketId },
+      data: { ticketOwnerId: ticketOwnerId ?? null },
+      include: {
+        ticketOwner: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    res.status(200).json({
+      id: updated.id,
+      ticketOwnerId: updated.ticketOwnerId,
+      ticketOwnerName: updated.ticketOwner ? updated.ticketOwner.name : null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to update ticket owner" });
+  }
+});
+
+// Endpoint 14 — PATCH /api/staff/tickets/:id/priority (BR-10)
+app.patch("/api/staff/tickets/:id/priority", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  if (req.user!.role === "REQUESTER") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  const { itPriority } = req.body as { itPriority: string };
+  const validPriorities = ["LOW", "MEDIUM", "HIGH"];
+  if (!itPriority || !validPriorities.includes(itPriority)) {
+    res.status(400).json({ error: "Invalid priority value. Must be LOW, MEDIUM, or HIGH." });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const updated = await prisma.ticket.update({
+      where: { id: parsedTicketId },
+      data: { itPriority: itPriority as "LOW" | "MEDIUM" | "HIGH" },
+    });
+
+    res.status(200).json({
+      id: updated.id,
+      itPriority: updated.itPriority,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to update IT priority" });
+  }
+});
+
+// Endpoint 15 — PATCH /api/staff/tickets/:id/status (BR-11)
+app.patch("/api/staff/tickets/:id/status", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  if (req.user!.role === "REQUESTER") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  const { newStatus } = req.body as { newStatus: string };
+  if (!newStatus) {
+    res.status(400).json({ error: "newStatus is required" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const fromStatus = ticket.currentStatus;
+    const allowedTargets = ALLOWED_TRANSITIONS[fromStatus] ?? [];
+
+    if (!allowedTargets.includes(newStatus)) {
+      res.status(400).json({
+        error: "Invalid status transition",
+        from: fromStatus,
+        to: newStatus,
+      });
+      return;
+    }
+
+    const updated = await prisma.ticket.update({
+      where: { id: parsedTicketId },
+      data: { currentStatus: newStatus as any },
+    });
+
+    res.status(200).json({
+      id: updated.id,
+      currentStatus: updated.currentStatus,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to update ticket status" });
+  }
+});
+
+// Endpoint 17 — POST /api/tickets/:id/notes (Internal Notes, BR-14)
+app.post("/api/tickets/:id/notes", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  // REQUESTER is forbidden — return 403 with no note content (AC-04)
+  if (req.user!.role === "REQUESTER") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  const { content } = req.body as { content: string };
+  if (!content || typeof content !== "string" || content.trim().length === 0) {
+    res.status(400).json({ error: "Note content cannot be empty or whitespace-only" });
+    return;
+  }
+
+  if (content.trim().length > 2000) {
+    res.status(400).json({ error: "Note content is required and must not exceed 2000 characters" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const note = await prisma.internalNote.create({
+      data: {
+        ticketId: parsedTicketId,
+        authorId: req.user!.id,
+        content: content.trim(),
+      },
+      include: {
+        author: { select: { id: true, name: true, role: true } },
+      },
+    });
+
+    res.status(201).json({
+      id: note.id,
+      ticketId: note.ticketId,
+      authorId: note.authorId,
+      authorName: note.author.name,
+      authorRole: note.author.role,
+      content: note.content,
+      createdAt: note.createdAt.toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to create internal note" });
+  }
+});
+
+// Endpoint 17 — GET /api/tickets/:id/notes (Internal Notes, BR-14, AC-04, AC-10)
+app.get("/api/tickets/:id/notes", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+  // REQUESTER is forbidden — return 403 with no note content (AC-04, AC-10)
+  if (req.user!.role === "REQUESTER") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsedTicketId = parseInt(req.params.id, 10);
+  if (isNaN(parsedTicketId)) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const notes = await prisma.internalNote.findMany({
+      where: { ticketId: parsedTicketId },
+      include: {
+        author: { select: { id: true, name: true, role: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    res.status(200).json(
+      notes.map((note) => ({
+        id: note.id,
+        ticketId: note.ticketId,
+        authorId: note.authorId,
+        authorName: note.author.name,
+        authorRole: note.author.role,
+        content: note.content,
+        createdAt: note.createdAt.toISOString(),
+      }))
+    );
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load internal notes" });
   }
 });
 

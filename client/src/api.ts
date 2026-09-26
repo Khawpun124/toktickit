@@ -719,5 +719,140 @@ export async function postPublicComment(
 
 
 
+// ---------------------------------------------------------------------------
+// Issue 5 — IT Staff Ticket Operations API
+// ---------------------------------------------------------------------------
 
+// Endpoint 13 — Claim / reassign / unassign Ticket Owner
+export async function claimTicketOwner(
+  ticketId: number,
+  ticketOwnerId: number | null
+): Promise<{ id: number; ticketOwnerId: number | null; ticketOwnerName: string | null }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/staff/tickets/${ticketId}/owner`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ ticketOwnerId }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
 
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Unable to update ticket owner");
+  }
+  return data;
+}
+
+// Endpoint 14 — Set IT Priority
+export async function setItPriority(
+  ticketId: number,
+  itPriority: "LOW" | "MEDIUM" | "HIGH"
+): Promise<{ id: number; itPriority: "LOW" | "MEDIUM" | "HIGH" }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/staff/tickets/${ticketId}/priority`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ itPriority }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Unable to update IT priority");
+  }
+  return data;
+}
+
+// Endpoint 15 — Status transition
+export async function setTicketStatus(
+  ticketId: number,
+  newStatus: string
+): Promise<{ id: number; currentStatus: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/staff/tickets/${ticketId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ newStatus }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err: any = new Error(data.error ?? "Unable to update ticket status");
+    err.from = data.from;
+    err.to = data.to;
+    throw err;
+  }
+  return data;
+}
+
+// Internal Note shape (same as PublicComment)
+export interface InternalNote {
+  id: number;
+  ticketId: number;
+  authorId: number;
+  authorName: string;
+  authorRole: UserRole;
+  content: string;
+  createdAt: string;
+}
+
+// Endpoint 17 — GET internal notes (IT_STAFF/ADMINISTRATOR only)
+export async function getInternalNotes(ticketId: number): Promise<InternalNote[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/tickets/${ticketId}/notes`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (res.status === 403) {
+    const err = new Error("Forbidden") as Error & { status?: number };
+    err.status = 403;
+    throw err;
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Unable to load internal notes");
+  }
+  return data;
+}
+
+// Endpoint 17 — POST internal note (IT_STAFF/ADMINISTRATOR only)
+export async function postInternalNote(
+  ticketId: number,
+  content: string
+): Promise<InternalNote> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/tickets/${ticketId}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ content }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Unable to post internal note");
+  }
+  return data;
+}
