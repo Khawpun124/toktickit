@@ -14,7 +14,7 @@ describe("GET /api/tickets (My Tickets API)", () => {
   beforeEach(async () => {
     createdTicketIds = [];
     const requesters = await prisma.user.findMany({
-      where: { role: "REQUESTER", isActive: true },
+      where: { role: "REQUESTER", isActive: true, email: { not: { contains: "-" } } },
       orderBy: { id: "asc" },
       take: 4,
     });
