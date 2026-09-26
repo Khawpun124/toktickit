@@ -18,6 +18,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
     activeTab ||
     (location.pathname === "/tickets/new"
       ? "create-ticket"
+      : location.pathname.startsWith("/admin/users")
+      ? "user-management"
       : location.pathname.startsWith("/staff/tickets")
       ? "my-queue"
       : "my-tickets");
@@ -35,6 +37,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
   const handleNavMyQueue = () => {
     if (onSelectTab) onSelectTab("my-queue");
     navigate("/staff/tickets");
+  };
+
+  const handleNavUserManagement = () => {
+    if (onSelectTab) onSelectTab("user-management");
+    navigate("/admin/users");
   };
 
   const handleLogout = async () => {
@@ -104,7 +111,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
                   </button>
                 </>
               )}
-              {(currentUser.role === "IT_STAFF" || currentUser.role === "ADMINISTRATOR") && (
+              {currentUser.role === "IT_STAFF" && (
                 <>
                   <button
                     onClick={handleNavMyQueue}
@@ -125,6 +132,30 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
                     }`}
                   >
                     + Create Ticket
+                  </button>
+                </>
+              )}
+              {currentUser.role === "ADMINISTRATOR" && (
+                <>
+                  <button
+                    onClick={handleNavUserManagement}
+                    className={`btn btn-sm ${
+                      currentTab === "user-management"
+                        ? "btn-light fw-bold text-success"
+                        : "btn-outline-light"
+                    }`}
+                  >
+                    Admin / User Management
+                  </button>
+                  <button
+                    onClick={handleNavMyQueue}
+                    className={`btn btn-sm ${
+                      currentTab === "my-queue"
+                        ? "btn-light fw-bold text-success"
+                        : "btn-outline-light"
+                    }`}
+                  >
+                    My Queue
                   </button>
                 </>
               )}

@@ -1562,6 +1562,224 @@ app.get("/api/tickets/:id/notes", requireAuth, requirePasswordChanged, async (re
   }
 });
 
+// ---------------------------------------------------------------------------
+// Issue 6 — Administrator User Management Endpoints (Endpoints 18–21)
+// ---------------------------------------------------------------------------
+
+const requireAdmin = (req: Request, res: Response, next: () => void) => {
+  if (!req.user || req.user.role !== "ADMINISTRATOR") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  next();
+};
+
+// Endpoint 18: GET /api/admin/users — List users (Admin only)
+app.get("/api/admin/users", requireAuth, requirePasswordChanged, requireAdmin, async (req: Request, res: Response) => {
+  const { search, role } = req.query;
+
+  const whereClause: any = {};
+
+  if (search && typeof search === "string" && search.trim() !== "") {
+    const term = search.trim();
+    whereClause.OR = [
+      { name: { contains: term, mode: "insensitive" } },
+      { email: { contains: term, mode: "insensitive" } },
+    ];
+  }
+
+  if (role && ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"].includes(role as string)) {
+    whereClause.role = role as string;
+  }
+
+  try {
+    const prisma = getPrisma();
+    const users = await prisma.user.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+      },
+      orderBy: { id: "asc" },
+    });
+
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to load users" });
+  }
+});
+
+// Endpoint 19: POST /api/admin/users — Create user (Admin only)
+app.post("/api/admin/users", requireAuth, requirePasswordChanged, requireAdmin, async (req: Request, res: Response) => {
+  const { name, email, role, isActive, initialPassword } = req.body ?? {};
+
+  const trimmedName = typeof name === "string" ? name.trim() : "";
+  const trimmedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const validRoles = ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"];
+
+  if (!trimmedName || !trimmedEmail || !role || !validRoles.includes(role) || !initialPassword || typeof initialPassword !== "string") {
+    res.status(400).json({ error: "Name, email, valid role, and initial password are required" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+
+    // BR-19: Duplicate email check
+    const existing = await prisma.user.findUnique({ where: { email: trimmedEmail } });
+    if (existing) {
+      res.status(400).json({ error: "A user with this email already exists" });
+      return;
+    }
+
+    const passwordHash = await hashPassword(initialPassword);
+
+    const user = await prisma.user.create({
+      data: {
+        name: trimmedName,
+        email: trimmedEmail,
+        passwordHash,
+        role: role as Role,
+        isActive: isActive !== undefined ? Boolean(isActive) : true,
+        mustChangePassword: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+      },
+    });
+
+    res.status(201).json(user);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to create user" });
+  }
+});
+
+// Endpoint 20: PATCH /api/admin/users/:id — Edit user (Admin only)
+app.patch("/api/admin/users/:id", requireAuth, requirePasswordChanged, requireAdmin, async (req: Request, res: Response) => {
+  const parsedUserId = parseInt(req.params.id, 10);
+  if (isNaN(parsedUserId)) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const { name, email, role, isActive } = req.body ?? {};
+
+  try {
+    const prisma = getPrisma();
+
+    const targetUser = await prisma.user.findUnique({ where: { id: parsedUserId } });
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    // BR-20: Self-deactivation check (403)
+    if (req.user!.id === targetUser.id && isActive === false) {
+      res.status(403).json({ error: "You cannot deactivate your own account" });
+      return;
+    }
+
+    // BR-19: Duplicate email check (400)
+    if (email && typeof email === "string") {
+      const trimmedEmail = email.trim().toLowerCase();
+      if (trimmedEmail !== targetUser.email) {
+        const existing = await prisma.user.findUnique({ where: { email: trimmedEmail } });
+        if (existing && existing.id !== targetUser.id) {
+          res.status(400).json({ error: "A user with this email already exists" });
+          return;
+        }
+      }
+    }
+
+    // BR-21: Last active Administrator protection (400)
+    const nextRole = role !== undefined ? role : targetUser.role;
+    const nextIsActive = isActive !== undefined ? Boolean(isActive) : targetUser.isActive;
+    const wasActiveAdmin = targetUser.role === "ADMINISTRATOR" && targetUser.isActive;
+    const willBeActiveAdmin = nextRole === "ADMINISTRATOR" && nextIsActive;
+
+    if (wasActiveAdmin && !willBeActiveAdmin) {
+      const activeAdminCount = await prisma.user.count({
+        where: { role: "ADMINISTRATOR", isActive: true },
+      });
+      if (activeAdminCount <= 1) {
+        res.status(400).json({ error: "Cannot remove or deactivate the last active Administrator" });
+        return;
+      }
+    }
+
+    const updateData: any = {};
+    if (name && typeof name === "string") updateData.name = name.trim();
+    if (email && typeof email === "string") updateData.email = email.trim().toLowerCase();
+    if (role && ["REQUESTER", "IT_STAFF", "ADMINISTRATOR"].includes(role)) updateData.role = role as Role;
+    if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+
+    const updatedUser = await prisma.user.update({
+      where: { id: parsedUserId },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+      },
+    });
+
+    res.status(200).json(updatedUser);
+  } catch (error) {
+    res.status(500).json({ error: "Unable to update user" });
+  }
+});
+
+// Endpoint 21: POST /api/admin/users/:id/reset-password — Set new initial password (Admin only)
+app.post("/api/admin/users/:id/reset-password", requireAuth, requirePasswordChanged, requireAdmin, async (req: Request, res: Response) => {
+  const parsedUserId = parseInt(req.params.id, 10);
+  if (isNaN(parsedUserId)) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const { newInitialPassword } = req.body ?? {};
+  if (!newInitialPassword || typeof newInitialPassword !== "string" || newInitialPassword.trim() === "") {
+    res.status(400).json({ error: "New initial password is required" });
+    return;
+  }
+
+  try {
+    const prisma = getPrisma();
+
+    const targetUser = await prisma.user.findUnique({ where: { id: parsedUserId } });
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const passwordHash = await hashPassword(newInitialPassword);
+
+    await prisma.user.update({
+      where: { id: parsedUserId },
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+      },
+    });
+
+    res.status(200).json({ success: true, mustChangePassword: true });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to reset password" });
+  }
+});
+
 export default app;
 
 

@@ -11,7 +11,7 @@ describe("POST /api/tickets (Create Ticket API)", () => {
 
   beforeAll(async () => {
     requesterUser = await prisma.user.findFirst({
-      where: { role: "REQUESTER", isActive: true },
+      where: { role: "REQUESTER", isActive: true, email: { not: { contains: "-" } } },
       orderBy: { id: "asc" },
     });
     if (!requesterUser) {

@@ -16,7 +16,7 @@ describe("Attachment API (API-10 through API-15)", () => {
 
   beforeEach(async () => {
     const requesters = await prisma.user.findMany({
-      where: { role: "REQUESTER", isActive: true },
+      where: { role: "REQUESTER", isActive: true, email: { not: { contains: "-" } } },
       orderBy: { id: "asc" },
       take: 2,
     });
