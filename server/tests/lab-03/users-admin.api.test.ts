@@ -189,6 +189,24 @@ describe("Administrator User Management API Tests (Endpoints 18-21 — API-17..2
     expect(res.status).toBe(403);
   });
 
+  it("POST /api/admin/users with weak initialPassword returns 400 with rules breakdown", async () => {
+    const res = await request(app)
+      .post("/api/admin/users")
+      .set("Cookie", adminCookie)
+      .send({
+        name: "Weak Pass User",
+        email: `weak-${Date.now()}@example.com`,
+        role: "REQUESTER",
+        isActive: true,
+        initialPassword: "a",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/does not meet requirements/i);
+    expect(res.body).toHaveProperty("rules");
+    expect(res.body.rules.minLength).toBe(false);
+  });
+
   // ── Endpoint 20: PATCH /api/admin/users/:id ──────────────────────────────
 
   it("Admin can edit user name, email, role, and activation state (BR-18)", async () => {
@@ -314,5 +332,43 @@ describe("Administrator User Management API Tests (Endpoints 18-21 — API-17..2
       .send({ newInitialPassword: "NewTempPassword123!" });
 
     expect(res.status).toBe(403);
+  });
+
+  it("POST /api/admin/users/:id/reset-password with weak newInitialPassword returns 400 with rules breakdown", async () => {
+    const res = await request(app)
+      .post(`/api/admin/users/${staffId}/reset-password`)
+      .set("Cookie", adminCookie)
+      .send({ newInitialPassword: "123" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/does not meet requirements/i);
+    expect(res.body).toHaveProperty("rules");
+    expect(res.body.rules.minLength).toBe(false);
+  });
+
+  it("Regression: POST /api/admin/users and reset-password with strong password (ValidPass123!) succeed", async () => {
+    const email = `valid-pass-${Date.now()}@example.com`;
+    const resCreate = await request(app)
+      .post("/api/admin/users")
+      .set("Cookie", adminCookie)
+      .send({
+        name: "Valid Pass User",
+        email,
+        role: "REQUESTER",
+        isActive: true,
+        initialPassword: "ValidPass123!",
+      });
+
+    expect(resCreate.status).toBe(201);
+
+    const resReset = await request(app)
+      .post(`/api/admin/users/${resCreate.body.id}/reset-password`)
+      .set("Cookie", adminCookie)
+      .send({ newInitialPassword: "ValidPass123!" });
+
+    expect(resReset.status).toBe(200);
+
+    // Clean up
+    await prisma.user.deleteMany({ where: { email } });
   });
 });

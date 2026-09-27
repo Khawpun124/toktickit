@@ -11,6 +11,7 @@ import {
   updateAdminUser,
   resetAdminUserPassword,
 } from "../api.js";
+import { PasswordRuleChecklist, validatePasswordRules } from "./PasswordRuleChecklist.js";
 
 // ── Role badge helpers ──────────────────────────────────────────────────────
 
@@ -225,6 +226,12 @@ export const UserManagementScreen: React.FC = () => {
       return;
     }
 
+    const rules = validatePasswordRules(formPassword);
+    if (!rules.isValid) {
+      setFormError("Password does not meet requirements.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload: CreateUserPayload = {
@@ -297,6 +304,12 @@ export const UserManagementScreen: React.FC = () => {
 
     if (!resetPassword.trim()) {
       setResetError("New initial password is required.");
+      return;
+    }
+
+    const rules = validatePasswordRules(resetPassword);
+    if (!rules.isValid) {
+      setResetError("Password does not meet requirements.");
       return;
     }
 
@@ -800,14 +813,7 @@ const PanelContent: React.FC<PanelContentProps> = ({
               User will be required to change this password at first login.
             </div>
             {/* Password rules */}
-            {formPassword.length > 0 && (
-              <ul className="list-unstyled mt-2 mb-0" style={{ fontSize: "0.8rem" }}>
-                <PasswordRule ok={passwordRules.minLength} label="At least 8 characters" />
-                <PasswordRule ok={passwordRules.hasUpperLower} label="Upper and lowercase letters" />
-                <PasswordRule ok={passwordRules.hasNumber} label="At least one number" />
-                <PasswordRule ok={passwordRules.hasSpecialChar} label="At least one special character" />
-              </ul>
-            )}
+            <PasswordRuleChecklist password={formPassword} />
           </div>
         )}
 
@@ -816,7 +822,7 @@ const PanelContent: React.FC<PanelContentProps> = ({
           id="user-form-submit-btn"
           type="submit"
           className="btn btn-success w-100"
-          disabled={submitting}
+          disabled={submitting || (mode === "create" && !validatePasswordRules(formPassword).isValid)}
           style={{ backgroundColor: "var(--zg-primary, #1A7A4A)", borderColor: "var(--zg-primary, #1A7A4A)" }}
         >
           {submitting
@@ -873,12 +879,13 @@ const PanelContent: React.FC<PanelContentProps> = ({
                   {showResetPassword ? "🙈" : "👁"}
                 </button>
               </div>
+              <PasswordRuleChecklist password={resetPassword} />
             </div>
             <button
               id="reset-password-btn"
               type="submit"
               className="btn btn-warning w-100"
-              disabled={resetting || !resetPassword.trim()}
+              disabled={resetting || !validatePasswordRules(resetPassword).isValid}
             >
               {resetting ? "Resetting…" : "Reset Password"}
             </button>
@@ -888,11 +895,3 @@ const PanelContent: React.FC<PanelContentProps> = ({
     </div>
   );
 };
-
-// ── Password rule item ────────────────────────────────────────────────────────
-
-const PasswordRule: React.FC<{ ok: boolean; label: string }> = ({ ok, label }) => (
-  <li style={{ color: ok ? "#137333" : "#5F6368" }}>
-    {ok ? "✓" : "✗"} {label}
-  </li>
-);

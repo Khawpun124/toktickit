@@ -1626,6 +1626,15 @@ app.post("/api/admin/users", requireAuth, requirePasswordChanged, requireAdmin, 
     return;
   }
 
+  const validation = validatePasswordRules(initialPassword);
+  if (!validation.isValid) {
+    res.status(400).json({
+      error: "Password does not meet requirements",
+      rules: validation.rules,
+    });
+    return;
+  }
+
   try {
     const prisma = getPrisma();
 
@@ -1752,6 +1761,15 @@ app.post("/api/admin/users/:id/reset-password", requireAuth, requirePasswordChan
   const { newInitialPassword } = req.body ?? {};
   if (!newInitialPassword || typeof newInitialPassword !== "string" || newInitialPassword.trim() === "") {
     res.status(400).json({ error: "New initial password is required" });
+    return;
+  }
+
+  const validation = validatePasswordRules(newInitialPassword);
+  if (!validation.isValid) {
+    res.status(400).json({
+      error: "Password does not meet requirements",
+      rules: validation.rules,
+    });
     return;
   }
 
