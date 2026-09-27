@@ -856,3 +856,129 @@ export async function postInternalNote(
   }
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Issue 6 — Administrator User Management API Client (Endpoints 18–21)
+// ---------------------------------------------------------------------------
+
+export interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  mustChangePassword: boolean;
+}
+
+export interface CreateUserPayload {
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive?: boolean;
+  initialPassword: string;
+}
+
+export interface UpdateUserPayload {
+  name?: string;
+  email?: string;
+  role?: UserRole;
+  isActive?: boolean;
+}
+
+// Endpoint 18 — GET /api/admin/users (ADMINISTRATOR only)
+export async function getAdminUsers(search?: string, role?: string): Promise<AdminUser[]> {
+  const params = new URLSearchParams();
+  if (search && search.trim() !== "") params.append("search", search.trim());
+  if (role && role.trim() !== "") params.append("role", role.trim());
+
+  const queryString = params.toString() ? `?${params.toString()}` : "";
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/admin/users${queryString}`, {
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  if (res.status === 403) {
+    const err = new Error("Forbidden") as Error & { status?: number };
+    err.status = 403;
+    throw err;
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Unable to load users");
+  }
+  return data;
+}
+
+// Endpoint 19 — POST /api/admin/users (ADMINISTRATOR only)
+export async function createAdminUser(payload: CreateUserPayload): Promise<AdminUser> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/admin/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error ?? "Unable to create user") as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// Endpoint 20 — PATCH /api/admin/users/:id (ADMINISTRATOR only)
+export async function updateAdminUser(id: number, payload: UpdateUserPayload): Promise<AdminUser> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/admin/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error ?? "Unable to update user") as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// Endpoint 21 — POST /api/admin/users/:id/reset-password (ADMINISTRATOR only)
+export async function resetAdminUserPassword(id: number, newInitialPassword: string): Promise<{ success: boolean; mustChangePassword: boolean }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/admin/users/${id}/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ newInitialPassword }),
+    });
+  } catch {
+    throw new Error("Unable to connect to TokTickIT API");
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error ?? "Unable to reset password") as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}

@@ -9,6 +9,7 @@ import { MyTicketsScreen } from "./components/MyTicketsScreen.js";
 import { RequesterTicketDetailScreen } from "./components/RequesterTicketDetailScreen.js";
 import { StaffTicketQueueScreen } from "./components/StaffTicketQueueScreen.js";
 import { StaffTicketDetailScreen } from "./components/StaffTicketDetailScreen.js";
+import { UserManagementScreen } from "./components/UserManagementScreen.js";
 import "./index.css";
 
 export function AppContent() {
@@ -34,7 +35,11 @@ export function AppContent() {
     }
 
     const defaultPath =
-      user.role === "IT_STAFF" || user.role === "ADMINISTRATOR" ? "/staff/tickets" : "/tickets";
+      user.role === "ADMINISTRATOR"
+        ? "/admin/users"
+        : user.role === "IT_STAFF"
+        ? "/staff/tickets"
+        : "/tickets";
 
     return (
       <Routes>
@@ -44,6 +49,7 @@ export function AppContent() {
         <Route path="/tickets/:id" element={<RequesterTicketDetailScreen />} />
         <Route path="/staff/tickets" element={<StaffTicketQueueScreen />} />
         <Route path="/staff/tickets/:id" element={<StaffTicketDetailScreen />} />
+        <Route path="/admin/users" element={<UserManagementScreen />} />
         <Route path="*" element={<Navigate to={defaultPath} replace />} />
       </Routes>
     );

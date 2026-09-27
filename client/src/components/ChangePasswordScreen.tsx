@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { PasswordRuleChecklist, validatePasswordRules } from "./PasswordRuleChecklist";
 
 export const ChangePasswordScreen: React.FC = () => {
   const { changePassword } = useAuth();
@@ -16,14 +17,9 @@ export const ChangePasswordScreen: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Live password checklist validation
-  const minLength = newPassword.length >= 8;
-  const hasUpperLower = /[A-Z]/.test(newPassword) && /[a-z]/.test(newPassword);
-  const hasNumber = /[0-9]/.test(newPassword);
-  const hasSpecialChar = /[^A-Za-z0-9]/.test(newPassword);
-
-  const allRulesPassed = minLength && hasUpperLower && hasNumber && hasSpecialChar;
+  const rules = validatePasswordRules(newPassword);
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
-  const canSubmit = allRulesPassed && passwordsMatch && currentPassword.length > 0;
+  const canSubmit = rules.isValid && passwordsMatch && currentPassword.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,23 +116,7 @@ export const ChangePasswordScreen: React.FC = () => {
           </div>
 
           {/* Live Rule Checklist */}
-          <div style={{ marginBottom: "1rem", padding: "0.75rem", backgroundColor: "#F9FAFB", borderRadius: "4px", border: "1px solid #E5E7EB", fontSize: "0.85rem" }}>
-            <div style={{ fontWeight: 600, marginBottom: "0.5rem", color: "#374151" }}>Password Requirements:</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-              <div data-testid="rule-min-length" style={{ color: minLength ? "#059669" : "#DC2626" }}>
-                {minLength ? "✓" : "✗"} Minimum 8 characters
-              </div>
-              <div data-testid="rule-upper-lower" style={{ color: hasUpperLower ? "#059669" : "#DC2626" }}>
-                {hasUpperLower ? "✓" : "✗"} Upper and lower case letters
-              </div>
-              <div data-testid="rule-number" style={{ color: hasNumber ? "#059669" : "#DC2626" }}>
-                {hasNumber ? "✓" : "✗"} At least one number
-              </div>
-              <div data-testid="rule-special" style={{ color: hasSpecialChar ? "#059669" : "#DC2626" }}>
-                {hasSpecialChar ? "✓" : "✗"} At least one special character
-              </div>
-            </div>
-          </div>
+          <PasswordRuleChecklist password={newPassword} />
 
           {/* Confirm Password */}
           <div style={{ marginBottom: "1.5rem" }}>
