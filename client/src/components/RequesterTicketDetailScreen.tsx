@@ -149,8 +149,9 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
 
 
   useEffect(() => {
+    if (!user) return;
     fetchTicketData();
-  }, [activeTicketId]);
+  }, [activeTicketId, user]);
 
   const handleConfirmResolve = async () => {
     if (!ticket) return;
