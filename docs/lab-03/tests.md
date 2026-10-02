@@ -51,9 +51,9 @@ real file path.
 | UI-12 | UI | AC-12 | Create user with duplicate email in UI | Field-level validation error shown | `client/tests/lab-03/UserManagement.test.tsx` | Pending |
 | UI-13 | UI | AC-13 | Self-deactivation attempt in UI | Deactivate control disabled/blocked with message | `client/tests/lab-03/UserManagement.test.tsx` | Pending |
 | STYLE-01 | UI Style | Zen Green consistency | Role badge and status badge styling consistent with Lab 2 tokens | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Pending |
-| RESP-01 | Responsive | Section 8.7 | Login/Change Password at desktop/tablet/mobile | No clipping/overlap/horizontal scroll | Playwright screenshot | Pending |
-| RESP-02 | Responsive | Section 8.7 | Staff Queue and Ticket Detail at all viewports | Table→card representation correct; usable at all sizes | Playwright screenshot | Pending |
-| RESP-03 | Responsive | Section 8.7 | User Management at all viewports | Form and list usable at all sizes | Playwright screenshot | Pending |
+| RESP-01 | Responsive | Section 8.7 | Login/Change Password at desktop/tablet/mobile | No clipping/overlap/horizontal scroll | Playwright screenshot | Pass |
+| RESP-02 | Responsive | Section 8.7 | Staff Queue and Ticket Detail at all viewports | Table→card representation correct; usable at all sizes | Playwright screenshot | Pass |
+| RESP-03 | Responsive | Section 8.7 | User Management at all viewports | Form and list usable at all sizes | Playwright screenshot | Pass |
 | SEC-01 | Security | AC-14 | Direct fetch to /api/admin/* as Requester/IT Staff (bypassing UI) | 403 for every admin endpoint | `server/tests/lab-03/authorization.api.test.ts` | Pending |
 | SEC-02 | Security | AC-04 | Direct fetch to Internal Notes endpoint as Requester | 403; response body contains no note content | `server/tests/lab-03/comments-notes.api.test.ts` | Pending |
 | SEC-03 | Security | AC-03 | Direct fetch with a forged requesterId in the request body | Backend ignores it; session identity used instead | `server/tests/lab-03/authorization.api.test.ts` | Pending |
@@ -61,9 +61,9 @@ real file path.
 | MIG-01 | Migration/Regression | AC-16, BR-23 | Run migration against seeded Lab 2 data | Every RequesterUser becomes a User with role REQUESTER | `server/tests/lab-03/migration.test.ts` | Pending |
 | MIG-02 | Migration/Regression | AC-16, BR-24 | Ticket ownership after migration | Every pre-existing Ticket's requesterId resolves correctly | `server/tests/lab-03/migration.test.ts` | Pending |
 | MIG-03 | Migration/Regression | — | Full Lab 1 + Lab 2 test suite after migration | All prior tests still pass unmodified in assertions | `server/tests/lab-01/*`, `server/tests/lab-02/*`, `client/tests/lab-01/*`, `client/tests/lab-02/*` | Pending |
-| E2E-01 | E2E | AC-01, AC-02 | Full login flow including mandatory password change | User reaches role-appropriate home screen only after valid change | `e2e/lab-03/authentication.spec.ts` | Pending |
-| E2E-02 | E2E | AC-06, AC-09, AC-10 | IT Staff claims a Ticket, posts a Public Comment and an Internal Note | Comment visible to Requester; Note never visible to Requester | `e2e/lab-03/staff-ticket-flow.spec.ts` | Pending |
-| E2E-03 | E2E | AC-12, AC-13 | Administrator creates a user, then attempts self-deactivation | User created successfully; self-deactivation blocked | `e2e/lab-03/user-administration.spec.ts` | Pending |
+| E2E-01 | E2E | AC-01, AC-02 | Full login flow including mandatory password change | User reaches role-appropriate home screen only after valid change | `e2e/lab-03/authentication.spec.ts` | Pass |
+| E2E-02 | E2E | AC-06, AC-09, AC-10 | IT Staff claims a Ticket, posts a Public Comment and an Internal Note | Comment visible to Requester; Note never visible to Requester | `e2e/lab-03/staff-ticket-flow.spec.ts` | Pass |
+| E2E-03 | E2E | AC-12, AC-13 | Administrator creates a user, then attempts self-deactivation | User created successfully; self-deactivation blocked | `e2e/lab-03/user-administration.spec.ts` | Pass |
 
 ## 3. Acceptance-Criterion Traceability
 
@@ -90,12 +90,12 @@ real file path.
 
 To be completed with real screenshots during the E2E/visual testing Issue:
 
-- [ ] Desktop (>=992px): Login, Staff Queue, Staff Ticket Detail, User Management
-- [ ] Tablet (768-991px): same four screens
-- [ ] Mobile (<768px): same four screens — fields stack, no horizontal scroll
-- [ ] Role badges legible and distinguishable without relying on color alone
-- [ ] Internal Notes panel visually distinct from Public Comments at all viewports
-- [ ] Editable vs read-only field styling consistent with Lab 2 tokens
+- [x] Desktop (>=992px): Login, Staff Queue, Staff Ticket Detail, User Management
+- [x] Tablet (768-991px): same four screens
+- [x] Mobile (<768px): same four screens — fields stack, no horizontal scroll
+- [x] Role badges legible and distinguishable without relying on color alone
+- [x] Internal Notes panel visually distinct from Public Comments at all viewports
+- [x] Editable vs read-only field styling consistent with Lab 2 tokens
 
 Screenshot paths: `artifacts/lab-03/screenshots/authentication/`,
 `artifacts/lab-03/screenshots/staff-queue/`,

@@ -778,7 +778,7 @@ const PanelContent: React.FC<PanelContentProps> = ({
             </label>
           </div>
           {mode === "edit" && isSelf && !formIsActive && (
-            <div id="user-form-error" className="text-danger small mt-1">
+            <div id="user-form-active-warning" className="text-danger small mt-1">
               You cannot deactivate your own account.
             </div>
           )}
