@@ -10,6 +10,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
     "migrate:users": "tsx src/utils/migrate-users.ts",
+    "db:reset": "tsx scripts/reset-db.ts",
     "test": "vitest run"
   },
   "prisma": {

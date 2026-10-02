@@ -3,14 +3,66 @@ import path from "path";
 import fs from "fs";
 
 async function selectRequester(page: Page, optionLabel: string) {
+  const emailMatch = optionLabel.match(/\(([^)]+)\)/);
+  const email = emailMatch ? emailMatch[1] : optionLabel;
+  const currentPass = "ChangeMe123!";
+  const newPass = "NewPassword123!";
+
   const selectHeading = page.getByText(/Select Development Requester/i);
-  if (await selectHeading.isVisible()) {
+  if (await selectHeading.isVisible({ timeout: 1000 }).catch(() => false)) {
     await expect(page.getByText(/Loading requesters/i)).not.toBeVisible({ timeout: 10000 });
     const select = page.locator("#requesterSelect");
     await select.waitFor({ state: "visible" });
     await select.selectOption({ label: optionLabel });
     await page.getByRole("button", { name: /Continue/i }).click();
+    return;
   }
+
+  // Lab 3 real authentication flow
+  const logoutBtn = page.getByRole("button", { name: /Logout/i });
+  if (await logoutBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+    const headerText = await page.locator("header").textContent().catch(() => "");
+    if (!headerText?.includes(email)) {
+      await logoutBtn.click();
+      await expect(page.getByRole("heading", { name: /TokTickIT Login/i })).toBeVisible({ timeout: 5000 });
+    } else {
+      return;
+    }
+  }
+
+  const emailInput = page.locator("#email");
+  if (await emailInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await emailInput.fill(email);
+    await page.locator("#password").fill(currentPass);
+    await page.getByRole("button", { name: /Sign In/i }).click();
+
+    const alertBox = page.locator('div[role="alert"]');
+    const changePassHeading = page.getByRole("heading", { name: /Mandatory Password Change/i });
+
+    await Promise.race([
+      alertBox.waitFor({ state: "visible", timeout: 4000 }).catch(() => {}),
+      changePassHeading.waitFor({ state: "visible", timeout: 4000 }).catch(() => {}),
+      logoutBtn.waitFor({ state: "visible", timeout: 4000 }).catch(() => {}),
+    ]);
+
+    if (await alertBox.isVisible().catch(() => false)) {
+      const alertText = await alertBox.textContent();
+      if (alertText?.includes("Invalid email or password")) {
+        await page.locator("#password").fill(newPass);
+        await page.getByRole("button", { name: /Sign In/i }).click();
+      }
+    }
+
+    if (await changePassHeading.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await page.locator("#currentPassword").fill(currentPass);
+      await page.locator("#newPassword").fill(newPass);
+      await page.locator("#confirmPassword").fill(newPass);
+      await page.getByRole("button", { name: /Continue/i }).click();
+      await expect(changePassHeading).not.toBeVisible({ timeout: 10000 });
+    }
+  }
+
+  await expect(page.getByRole("button", { name: /Logout/i })).toBeVisible({ timeout: 15000 });
 }
 
 function getTicketElement(page: Page, ticketNumber: string, projectName: string) {
@@ -108,12 +160,8 @@ test.describe.serial("TokTickIT Lab 2 - Requester Ticket Flow & Visual Verificat
     // Ensure Requester 1 is active initially
     await selectRequester(page, "Jennifer Anderson (jennifer.anderson@example.com)");
 
-    // Click Change Requester
-    await page.getByRole("button", { name: /Change Requester/i }).click();
-    await expect(page.getByText(/Select Development Requester/i)).toBeVisible();
-
-    // Select Requester 2 (Michael Brown)
-    await selectRequester(page, "Michael Brown (michael.brown@example.com)");
+    // Select Requester 2 (Emily Taylor)
+    await selectRequester(page, "Emily Taylor (emily.taylor@example.com)");
 
     // My Tickets should reload for Requester 2
     await page.waitForTimeout(500);
@@ -130,13 +178,8 @@ test.describe.serial("TokTickIT Lab 2 - Requester Ticket Flow & Visual Verificat
   }) => {
     await page.goto("/");
 
-    // Select Requester 2 (Michael Brown - id 2)
-    if (await page.getByText(/Select Development Requester/i).isVisible()) {
-      await selectRequester(page, "Michael Brown (michael.brown@example.com)");
-    } else {
-      await page.getByRole("button", { name: /Change Requester/i }).click();
-      await selectRequester(page, "Michael Brown (michael.brown@example.com)");
-    }
+    // Select Requester 2 (Emily Taylor)
+    await selectRequester(page, "Emily Taylor (emily.taylor@example.com)");
 
     const ticketIdToTest = createdTicketId || 1;
 
@@ -164,15 +207,7 @@ test.describe.serial("TokTickIT Lab 2 - Requester Ticket Flow & Visual Verificat
     await page.goto("/");
 
     // Switch back to Requester 1 (Jennifer Anderson)
-    if (await page.getByText(/Select Development Requester/i).isVisible()) {
-      await selectRequester(page, "Jennifer Anderson (jennifer.anderson@example.com)");
-    } else {
-      const currentRequester = await page.locator("header").textContent();
-      if (!currentRequester?.includes("Jennifer Anderson")) {
-        await page.getByRole("button", { name: /Change Requester/i }).click();
-        await selectRequester(page, "Jennifer Anderson (jennifer.anderson@example.com)");
-      }
-    }
+    await selectRequester(page, "Jennifer Anderson (jennifer.anderson@example.com)");
 
     // Go to My Tickets list
     await page.getByRole("button", { name: /My Tickets/i }).first().click();

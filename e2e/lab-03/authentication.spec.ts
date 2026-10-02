@@ -40,46 +40,28 @@ test.describe.serial("TokTickIT Lab 3 - Authentication & Password Change Flow (E
     await page.locator("#password").fill(initialPassword);
     await page.getByRole("button", { name: /Sign In/i }).click();
 
-    const alertBox = page.locator('div[role="alert"]');
     const changePassHeading = page.getByRole("heading", { name: /Mandatory Password Change/i });
 
-    await Promise.race([
-      alertBox.waitFor({ state: "visible", timeout: 4000 }).catch(() => {}),
-      changePassHeading.waitFor({ state: "visible", timeout: 4000 }).catch(() => {}),
-    ]);
+    // Step 3: Mandatory Password Change Screen redirect check (AC-02)
+    await expect(changePassHeading).toBeVisible();
+    await expect(page.getByText(/You must set a new secure password/i)).toBeVisible();
 
-    let isAlreadyChanged = false;
-    if (await alertBox.isVisible().catch(() => false)) {
-      const alertText = await alertBox.textContent();
-      if (alertText?.includes("Invalid email or password")) {
-        await page.locator("#password").fill(newPassword);
-        await page.getByRole("button", { name: /Sign In/i }).click();
-        isAlreadyChanged = true;
-      }
-    }
+    // Screenshot: Change Password screen
+    await page.screenshot({
+      path: path.join(screenshotDir, `change-password-${projectName}.png`),
+      fullPage: true,
+    });
 
-    if (!isAlreadyChanged) {
-      // Step 3: Mandatory Password Change Screen redirect check (AC-02)
-      await expect(changePassHeading).toBeVisible();
-      await expect(page.getByText(/You must set a new secure password/i)).toBeVisible();
+    // Step 4: Fill Change Password Form
+    await page.locator("#currentPassword").fill(initialPassword);
+    await page.locator("#newPassword").fill(newPassword);
+    await page.locator("#confirmPassword").fill(newPassword);
 
-      // Screenshot: Change Password screen
-      await page.screenshot({
-        path: path.join(screenshotDir, `change-password-${projectName}.png`),
-        fullPage: true,
-      });
+    // Verify Password Rules checklist indicators
+    await expect(page.getByText(/Minimum 8 characters/i)).toBeVisible();
 
-      // Step 4: Fill Change Password Form
-      await page.locator("#currentPassword").fill(initialPassword);
-      await page.locator("#newPassword").fill(newPassword);
-      await page.locator("#confirmPassword").fill(newPassword);
-
-      // Verify Password Rules checklist indicators
-      await expect(page.getByText(/Minimum 8 characters/i)).toBeVisible();
-
-      // Submit password change
-      await page.getByRole("button", { name: /Continue/i }).click();
-    }
+    // Submit password change
+    await page.getByRole("button", { name: /Continue/i }).click();
 
     // Step 5: Verification of successful redirect to role landing page
     await expect(page.getByRole("heading", { name: /Mandatory Password Change/i })).not.toBeVisible();

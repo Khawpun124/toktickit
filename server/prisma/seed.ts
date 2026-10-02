@@ -46,8 +46,11 @@ async function main() {
   const defaultPasswordHash = await hashPassword(MIGRATED_USER_INITIAL_PASSWORD);
 
   const usersToSeed = [
-    // 4+ Active Requesters
+    // 5+ Active Requesters
+    // jennifer.anderson and emily.taylor are used exclusively by Lab 2 E2E tests
+    // sarah.connor (desktop), michael.brown (tablet), david.miller (mobile) are used exclusively by Lab 3 auth E2E test
     { name: "Jennifer Anderson", email: "jennifer.anderson@example.com", role: Role.REQUESTER, isActive: true },
+    { name: "Emily Taylor", email: "emily.taylor@example.com", role: Role.REQUESTER, isActive: true },
     { name: "Michael Brown", email: "michael.brown@example.com", role: Role.REQUESTER, isActive: true },
     { name: "Sarah Connor", email: "sarah.connor@example.com", role: Role.REQUESTER, isActive: true },
     { name: "David Miller", email: "david.miller@example.com", role: Role.REQUESTER, isActive: true },
