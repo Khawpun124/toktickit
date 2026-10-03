@@ -1,26 +1,26 @@
 # Lab 3 — Peer Review Record
 
 ## My Information
-- Name: [ชื่อ-นามสกุล]
-- Student ID: [รหัสนักศึกษา]
+- Name: [Krittamate Niyomthum]
+- Student ID: [67070501053]
 - GitHub Username: Khawpun124
 
 ## My Reviewer
-- Name: [ชื่อ-นามสกุล ของ reviewer]
-- Student ID: [รหัสนักศึกษาของ reviewer]
-- GitHub Username: [username ของ reviewer]
+- Name: [Worapol Saeku]
+- Student ID: [67070501085]
+- GitHub Username: Worapol360
 
 ## 1. Pull Requests I Authored (Reviewed by Partner)
 
 | Issue | Feature Branch | PR Link | Reviewer Verdict |
 |---|---|---|---|
-| Issue 1: Sprint Specification and Test Plan | `feature/1-lab3-spec-and-test-plan` | [PR #<เลข>](<ลิงก์>) | Approved |
-| Issue 2: Authentication Foundation and User Migration | `feature/2-lab3-auth-foundation` | [PR #<เลข>](<ลิงก์>) | Approved after 3 rounds of fixes |
-| Issue 3: Requester Regression | `feature/3-lab3-requester-regression` | [PR #<เลข>](<ลิงก์>) | Approved after fixes |
-| Issue 4: IT Staff Ticket Queue | `feature/4-lab3-staff-queue` | [PR #<เลข>](<ลิงก์>) | Approved after 2 rounds of fixes |
-| Issue 5: IT Staff Ticket Detail | `feature/5-lab3-staff-ticket-detail` | [PR #<เลข>](<ลิงก์>) | Approved after 2 rounds of fixes |
-| Issue 6: Administrator User Management | `feature/6-lab3-admin-user-management` | [PR #<เลข>](<ลิงก์>) | Approved after fixes |
-| Issue 7: E2E + Visual/Responsive Testing | `feature/7-lab3-e2e-visual-tests` | [PR #<เลข>](<ลิงก์>) | Approved after 2 rounds of fixes |
+| Issue 1: Sprint Specification and Test Plan | `feature/1-lab3-spec-and-test-plan` |(<https://github.com/Khawpun124/toktickit/pull/38>) | Approved |
+| Issue 2: Authentication Foundation and User Migration | `feature/2-lab3-auth-foundation` |(<https://github.com/Khawpun124/toktickit/pull/40>) | Approved after 3 rounds of fixes |
+| Issue 3: Requester Regression | `feature/3-lab3-requester-regression` | (<https://github.com/Khawpun124/toktickit/pull/41>) | Approved after fixes |
+| Issue 4: IT Staff Ticket Queue | `feature/4-lab3-staff-queue` | (<https://github.com/Khawpun124/toktickit/pull/42>) | Approved after 2 rounds of fixes |
+| Issue 5: IT Staff Ticket Detail | `feature/5-lab3-staff-ticket-detail` | (<https://github.com/Khawpun124/toktickit/pull/43>) | Approved after 2 rounds of fixes |
+| Issue 6: Administrator User Management | `feature/6-lab3-admin-user-management` |(<https://github.com/Khawpun124/toktickit/pull/44>) | Approved after fixes |
+| Issue 7: E2E + Visual/Responsive Testing | `feature/7-lab3-e2e-visual-tests` |(<https://github.com/Khawpun124/toktickit/pull/45>) | Approved after 2 rounds of fixes |
 
 ## Detailed Peer Reviews Received from Partner
 
@@ -150,19 +150,48 @@ self-deactivation attempts.
 
 | Issue | Feature Branch | PR Link | Reviewer Verdict |
 |---|---|---|---|
-| Issue 1 | [branch ของ partner] | [ลิงก์ PR ของ partner] | [ผล] |
-| Issue 2 | [branch ของ partner] | [ลิงก์ PR ของ partner] | [ผล] |
-| Issue 3 | [branch ของ partner] | [ลิงก์ PR ของ partner] | [ผล] |
-| Issue 4 | [branch ของ partner] | [ลิงก์ PR ของ partner] | [ผล] |
-| Issue 5 | [branch ของ partner] | [ลิงก์ PR ของ partner] | [ผล] |
-| Issue 6 | [branch ของ partner] | [ลิงก์ PR ของ partner] | [ผล] |
-| Issue 7 | [branch ของ partner] | [ลิงก์ PR ของ partner] | [ผล] |
+| Issue 1 | [feature/lab3-1-specification] | [https://github.com/Worapol360/toktickit/pull/30] | [Approved] |
+| Issue 2 | [feature/lab3-2-auth-foundation] | [https://github.com/Worapol360/toktickit/pull/31] | [Approved] |
+| Issue 3 | [fix/lab3-auth-test-isolation] | [https://github.com/Worapol360/toktickit/pull/32] | [Approved] |
+| Issue 3 | [feature/lab3-3-staff-queue] | [https://github.com/Worapol360/toktickit/pull/33] | [Approved] |
+| Issue 4 | [feature/lab3-4-staff-ticket-ops] | [https://github.com/Worapol360/toktickit/pull/34] | [Approved] |
+| Issue 5 | [feature/lab3-5-user-admin] | [https://github.com/Worapol360/toktickit/pull/37] | [Approved] |
 
 ### Detailed Reviews I Provided to Partner
 
-[กรอกทีละ Issue: comment ที่คุณให้ partner จริง + partner ตอบ/แก้ยังไง]
+### Issue 1: add sprint specification, api-spec, ui-spec, and test plan- #30
 
-## Evidence
+**My Comment:** Pass all acceptance criteria :)
 
-[แนบ/แปะ screenshot หน้า PR ที่แสดงสถานะ "Approved" สำหรับทุก PR (1-7)
-ทั้งที่ partner approve ให้คุณ และที่คุณ approve ให้ partner]
+**Reviewer's Response:** N/A.
+
+### Issue 2: Authentication foundation & requester migration
+
+**My Comment:** ตรงตาม Acceptance criteria :)
+
+**Reviewer's Response:** N/A.
+
+### fix Issue #3: Isolate auth test user updates- #32
+
+**My Comment:** ครบถ้วนตามรายละเอียดการแก้ไข :)
+
+**Reviewer's Response:** N/A.
+
+### Issue #3:  IT Staff Ticket Queue (Issue 3)
+
+**My Comment:** ผ่านตามเกณฑ์ Acceptance criteria :)
+
+**Reviewer's Response:** N/A.
+
+### Issue #4: IT Staff ticket operations, comments & internal notes
+
+**My Comment:** ครบถ้วนตาม description :)
+
+**Reviewer's Response:** N/A.
+
+### Issue #5: Administrator user management
+
+**My Comment:** ตรงตามรายละเอียดครบถ้วน :)
+
+**Reviewer's Response:** N/A.
+
