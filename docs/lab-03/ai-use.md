@@ -1,6 +1,6 @@
 # Lab 3 — AI Use and Reflection
 
-I used **[ชื่อ AI coding agent เช่น Antigravity]** as the AI Coding Agent
+I used **[Antigravity]** as the AI Coding Agent
 for implementation, and a general-purpose LLM chat assistant as the AI
 Specification Agent to draft `specification.md`, `tests.md`,
 `ui-spec.md`, and `api-spec.md` before any code was written, continuing
