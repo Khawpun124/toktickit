@@ -5,10 +5,12 @@ import App from "../../src/App.js";
 import * as api from "../../src/api.js";
 
 describe("App", () => {
-  const mockRequester = {
+  const mockUser: api.AuthUser = {
     id: 1,
     name: "Jennifer Anderson",
     email: "jennifer.anderson@example.com",
+    role: "REQUESTER",
+    mustChangePassword: false,
   };
 
   const mockCategories = [
@@ -23,9 +25,8 @@ describe("App", () => {
   ];
 
   beforeEach(() => {
+    window.history.pushState({}, "", "/");
     vi.restoreAllMocks();
-    sessionStorage.clear();
-    vi.spyOn(api, "getRequesters").mockResolvedValue([mockRequester]);
     vi.spyOn(api, "getCategories").mockResolvedValue(mockCategories);
     vi.spyOn(api, "getRelatedSystems").mockResolvedValue(mockSystems);
     vi.spyOn(api, "getTickets").mockResolvedValue({
@@ -35,26 +36,27 @@ describe("App", () => {
   });
 
   it("renders the TokTickIT heading", async () => {
+    vi.spyOn(api, "getMe").mockRejectedValue(new Error("Unauthenticated"));
     render(<App />);
     await waitFor(() => {
       expect(screen.getAllByText(/TokTickIT/i).length).toBeGreaterThan(0);
     });
   });
 
-
-  it("shows Requester Selection screen when no requester is selected", async () => {
+  it("shows Login screen when user is unauthenticated", async () => {
+    vi.spyOn(api, "getMe").mockRejectedValue(new Error("Unauthenticated"));
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText(/Select Development Requester/i)).toBeInTheDocument();
+      expect(screen.getByText(/TokTickIT Login/i)).toBeInTheDocument();
     });
   });
 
-  it("renders Create Support Ticket screen when requester context is active", async () => {
-    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
+  it("renders Create Support Ticket screen when authenticated user is active", async () => {
+    vi.spyOn(api, "getMe").mockResolvedValue(mockUser);
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: /\+ Create Ticket/i })[0]).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /My Tickets/i })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getAllByRole("button", { name: /\+ Create Ticket/i })[0]);
@@ -65,11 +67,11 @@ describe("App", () => {
   });
 
   it("displays category list in Create Ticket form when category fetch succeeds", async () => {
-    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
+    vi.spyOn(api, "getMe").mockResolvedValue(mockUser);
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: /\+ Create Ticket/i })[0]).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /My Tickets/i })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getAllByRole("button", { name: /\+ Create Ticket/i })[0]);

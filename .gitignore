@@ -22,3 +22,5 @@ client/.vite/
 /playwright/.auth/
 server/uploads/
 test-results/
+cookies.txt
+cookies*.txt

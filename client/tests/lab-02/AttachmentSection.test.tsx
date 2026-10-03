@@ -3,14 +3,16 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { RequesterTicketDetailScreen } from "../../src/components/RequesterTicketDetailScreen.js";
-import { RequesterProvider } from "../../src/context/RequesterContext.js";
+import { AuthProvider } from "../../src/context/AuthContext.js";
 import * as api from "../../src/api.js";
 
 describe("AttachmentSection (UI-11, UI-12)", () => {
-  const mockRequester: api.RequesterUser = {
+  const mockUser: api.AuthUser = {
     id: 1,
     name: "Jennifer Anderson",
     email: "jennifer.anderson@example.com",
+    role: "REQUESTER",
+    mustChangePassword: false,
   };
 
   const mockTicket: api.TicketDetail = {
@@ -39,8 +41,7 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    sessionStorage.clear();
-    sessionStorage.setItem("toktickit_selected_requester", JSON.stringify(mockRequester));
+    vi.spyOn(api, "getMe").mockResolvedValue(mockUser);
     vi.spyOn(api, "getTicket").mockResolvedValue(mockTicket);
   });
 
@@ -55,9 +56,9 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -95,9 +96,9 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -121,15 +122,15 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
-  it("downloads attachment with X-Requester-Id header when clicking Download button", async () => {
+  it("downloads attachment when clicking Download button", async () => {
     vi.spyOn(api, "getAttachments").mockResolvedValue([activeAttachment]);
     const downloadSpy = vi.spyOn(api, "downloadAttachment").mockResolvedValue(undefined);
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -141,7 +142,7 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
     fireEvent.click(downloadBtn);
 
     await waitFor(() => {
-      expect(downloadSpy).toHaveBeenCalledWith(501, "battery_report.pdf", 1);
+      expect(downloadSpy).toHaveBeenCalledWith(501, "battery_report.pdf");
     });
   });
 
@@ -151,9 +152,9 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -180,9 +181,9 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
 
     render(
       <MemoryRouter>
-        <RequesterProvider>
+        <AuthProvider>
           <RequesterTicketDetailScreen ticketId={101} onBack={() => {}} />
-        </RequesterProvider>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -198,4 +199,5 @@ describe("AttachmentSection (UI-11, UI-12)", () => {
     expect(downloadSpy).toHaveBeenCalledTimes(1);
   });
 });
+
 

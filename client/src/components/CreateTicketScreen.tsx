@@ -15,7 +15,7 @@ import {
   MAX_ATTACHMENT_SIZE_BYTES,
   MAX_ACTIVE_ATTACHMENTS,
 } from "../constants.js";
-import { useRequester } from "../context/RequesterContext.js";
+import { useAuth } from "../context/AuthContext.js";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -24,9 +24,8 @@ function formatFileSize(bytes: number): string {
 }
 
 export const CreateTicketScreen: React.FC = () => {
-  const { selectedRequester } = useRequester();
+  const { user } = useAuth();
   const navigate = useNavigate();
-
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [relatedSystems, setRelatedSystems] = useState<RelatedSystem[]>([]);
@@ -142,31 +141,23 @@ export const CreateTicketScreen: React.FC = () => {
       return;
     }
 
-    if (!selectedRequester) {
-      setGeneralError("No Requester selected. Please select a Requester.");
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
-      const ticket = await createTicket(
-        {
-          categoryId: parseInt(categoryId, 10),
-          relatedSystemId: parseInt(relatedSystemId, 10),
-          summary: trimmedSummary,
-          description: description.trim(),
-          requestedPriority,
-        },
-        selectedRequester.id
-      );
+      const ticket = await createTicket({
+        categoryId: parseInt(categoryId, 10),
+        relatedSystemId: parseInt(relatedSystemId, 10),
+        summary: trimmedSummary,
+        description: description.trim(),
+        requestedPriority,
+      });
 
       // Upload selected files sequentially (AC-05, BR-27)
       const uploadErrors: Array<{ fileName: string; reason: string }> = [];
       if (selectedFiles.length > 0) {
         for (const file of selectedFiles) {
           try {
-            await uploadAttachment(ticket.id, file, selectedRequester.id);
+            await uploadAttachment(ticket.id, file);
           } catch (err: unknown) {
             const reason = err instanceof Error ? err.message : "Failed to upload attachment";
             uploadErrors.push({ fileName: file.name, reason });
@@ -234,7 +225,7 @@ export const CreateTicketScreen: React.FC = () => {
           <div className="border rounded p-3 mb-4 bg-light">
             <div className="row g-2 small">
               <div className="col-sm-6">
-                <strong>Requester:</strong> {selectedRequester?.name}
+                <strong>Requester:</strong> {user?.name}
               </div>
               <div className="col-sm-6">
                 <strong>Priority:</strong> {createdTicket.requestedPriority}

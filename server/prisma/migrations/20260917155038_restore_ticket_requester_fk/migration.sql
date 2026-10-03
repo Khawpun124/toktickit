@@ -1,0 +1,4 @@
+-- This migration is intentionally a no-op.
+-- The Ticket_requesterId_fkey constraint is added programmatically by
+-- runUserMigration() in seed.ts AFTER User data has been populated from RequesterUser.
+-- This migration exists only to keep the Prisma migration history consistent.

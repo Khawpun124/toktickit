@@ -7,7 +7,6 @@ import {
   TicketListItem,
   PaginationInfo,
 } from "../api.js";
-import { useRequester } from "../context/RequesterContext.js";
 
 interface MyTicketsScreenProps {
   onNavigateToCreate?: () => void;
@@ -18,7 +17,6 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
   onNavigateToCreate,
   onSelectTicket,
 }) => {
-  const { selectedRequester } = useRequester();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -92,26 +90,21 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
   }, []);
 
   const fetchTickets = async () => {
-    if (!selectedRequester) return;
-
     setLoading(true);
     setError("");
 
     try {
-      const res = await getTickets(
-        {
-          search,
-          categoryId,
-          requestedPriority,
-          itPriority,
-          currentStatus,
-          sortBy,
-          sortDir,
-          page,
-          pageSize: 10,
-        },
-        selectedRequester.id
-      );
+      const res = await getTickets({
+        search,
+        categoryId,
+        requestedPriority,
+        itPriority,
+        currentStatus,
+        sortBy,
+        sortDir,
+        page,
+        pageSize: 10,
+      });
 
       setTickets(res.data);
       setPagination(res.pagination);
@@ -123,7 +116,7 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
         setTotalUnfilteredCount(res.pagination.totalItems);
       } else if (totalUnfilteredCount === null) {
         // Fetch total unfiltered count if filters are applied on initial load
-        getTickets({}, selectedRequester.id)
+        getTickets({})
           .then((allRes) => setTotalUnfilteredCount(allRes.pagination.totalItems))
           .catch(() => setTotalUnfilteredCount(res.pagination.totalItems));
       }
@@ -141,7 +134,7 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
   useEffect(() => {
     fetchTickets();
   }, [
-    selectedRequester,
+
     search,
     categoryId,
     requestedPriority,
