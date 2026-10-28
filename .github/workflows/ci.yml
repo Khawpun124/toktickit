@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, lab1-staging, lab2-staging, "feature/**"]
+    branches: [main, lab1-staging, lab2-staging, lab3-staging, lab4-staging, "feature/**", "fix/**"]
   pull_request:
-    branches: [main, lab1-staging, lab2-staging]
+    branches: [main, lab1-staging, lab2-staging, lab3-staging, lab4-staging]
 
 jobs:
   server-tests:
@@ -142,15 +142,57 @@ jobs:
       - name: Run Playwright E2E tests
         env:
           DATABASE_URL: postgresql://toktickit:toktickit_ci_password@localhost:5432/toktickit_db
-        run: npm run test:e2e
+        run: |
+          # Start backend separately so we can capture its stdout/stderr
+          npm run dev --prefix server > /tmp/backend.log 2>&1 &
+          BACKEND_PID=$!
+          echo "Backend PID: $BACKEND_PID" >> /tmp/backend.log
 
-      - name: Upload Playwright test results on failure
-        if: failure()
+          # Start frontend separately
+          npm run dev --prefix client > /tmp/frontend.log 2>&1 &
+          FRONTEND_PID=$!
+
+          # Wait for backend health endpoint (up to 30s)
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health > /dev/null; then
+              echo "Backend ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+          # Wait for frontend (up to 30s)
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5173 > /dev/null; then
+              echo "Frontend ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+          # Run Playwright — webServer.reuseExistingServer=true so it reuses the above processes
+          npm run test:e2e
+          E2E_EXIT=$?
+
+          # Capture backend/frontend logs as artifacts
+          cp /tmp/backend.log backend.log || true
+          cp /tmp/frontend.log frontend.log || true
+
+          # Stop background servers
+          kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
+
+          exit $E2E_EXIT
+
+      - name: Upload Playwright test results and logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
+          name: playwright-results-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             test-results/
+            playwright-report/
             artifacts/
-          retention-days: 7
+            backend.log
+            frontend.log
+          retention-days: 14
 

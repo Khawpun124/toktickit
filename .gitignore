@@ -24,3 +24,5 @@ server/uploads/
 test-results/
 cookies.txt
 cookies*.txt
+
+playwright-report/
