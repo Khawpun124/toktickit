@@ -153,8 +153,9 @@ Dialog (one component, three modes):
 - Fields in order:
   1. Action Date/Time (required, defaults to now)
   2. Description (required, multiline, counter to 1000)
-  3. Status (create offers PLANNED, IN_PROGRESS, COMPLETED; edit offers only the current
-     status and the permitted next statuses)
+  3. Status. In create mode a select offering PLANNED (default), IN_PROGRESS, and COMPLETED (the
+     create request carries the status). In view and edit mode it is a read-only status badge,
+     because the field-edit request does not accept a status (see "Changing an Action's status".)
   4. Assigned to (required; lists only active IT Staff and Administrators; defaults to the
      current user)
   5. Performed by (read-only, filled automatically, ivory read-only styling)
@@ -167,8 +168,26 @@ Dialog (one component, three modes):
      under the Attachments tab."
 - Buttons: Save (primary, busy state, disabled while a request is running) and Cancel
   (secondary). The dialog never closes on a failed save.
-- Choosing Status COMPLETED shows the note "Completed actions become read-only." Choosing
-  CANCELLED opens a confirmation ("Cancel this action? This cannot be undone.") when saving.
+- Changing an Action's status (view and edit mode, non-terminal Actions only). Status never
+  changes through Save. A separate "Change status" row under the fields shows one button per
+  permitted next status, and each button calls the status endpoint with the Action's current
+  `version`:
+  - PLANNED shows "Start" (to IN_PROGRESS), "Mark completed", and "Cancel action".
+  - IN_PROGRESS shows "Mark completed" and "Cancel action".
+  - COMPLETED and CANCELLED show no status buttons.
+  - "Start" is one click with no extra dialog.
+  - "Mark completed" opens a step panel inside the dialog with the Result field (required,
+    prefilled with the stored Result), the note "Completed actions become read-only.", and
+    Back and Confirm buttons. Confirm sends status COMPLETED together with the Result.
+  - "Cancel action" opens the same kind of step panel, with the field labeled "Reason for
+    cancelling" (required) and the text "Cancel this action? This cannot be undone." Confirm
+    sends status CANCELLED with the reason.
+  - The status buttons are disabled while the form has unsaved edits, with the hint "Save or
+    discard your changes first", so a field edit and a status change can never race inside one
+    dialog.
+  - After a successful change the dialog stays open in view mode showing the new status badge,
+    and the list row refreshes. Errors (INVALID_TRANSITION, ACTION_TERMINAL, STALE_VERSION)
+    use the same alert pattern as a failed save.
 - Validation messages appear directly under their field, with the asterisk kept (the
   asterisk never replaces the message). The first invalid field receives focus on submit.
 - Failure handling:

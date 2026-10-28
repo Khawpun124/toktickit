@@ -53,6 +53,11 @@ or a file path.
 | 500 | `INTERNAL_ERROR` | Unexpected failure, safe message only |
 | 503 | `NOT_READY` | Database not reachable (readiness endpoint only) |
 
+### Time
+
+All timestamps are ISO-8601 in UTC. Dashboard calculations use one server-captured `generatedAt`
+instant bound as a parameter (BR-28); the process or database time zone never affects a result.
+
 ### Concurrency
 
 `version` is an integer starting at 1 and increased by every successful update through an
@@ -182,8 +187,10 @@ Request (all fields except `expectedVersion` optional):
 ```
 
 - `expectedVersion` is required; if it is missing the response is 400 `VALIDATION_FAILED`.
-- The status cannot change here. A `status` field returns 400 with a message that points to
-  the status endpoint.
+- Status and Ticket cannot change here. A `status` or `ticketId` field returns 400
+  `VALIDATION_FAILED` with a message that points to the status endpoint. The Lab 4 UI changes an
+  Action's status only through that endpoint, with separate buttons (Start, Mark completed,
+  Cancel action), never through Save in the edit dialog.
 - Turning `followUpRequired` off clears `followUpNote`.
 - A request with no changes returns 400 `VALIDATION_FAILED` ("No changes supplied").
 
@@ -310,6 +317,7 @@ Response 200:
 ```json
 {
   "generatedAt": "2026-10-12T10:20:00.000Z",
+  "recentlyResolvedSince": "2026-09-12T10:20:00.000Z",
   "metrics": {
     "open": { "count": 3, "query": "currentStatus=NEW,OPEN,IN_PROGRESS,REOPENED" },
     "waitingForYou": { "count": 1, "query": "currentStatus=WAITING_FOR_REQUESTER" },
@@ -328,11 +336,17 @@ Response 200:
 }
 ```
 
-- Counts come from the database at request time; nothing is cached (BR-26).
+- Counts come from the database at request time with the single `generatedAt` instant; nothing is cached (BR-26).
 - Each list holds at most 5 items. `needsAttention`: WAITING_FOR_REQUESTER, oldest `updatedAt`
   first. `recentlyUpdated`: any status, newest `updatedAt` first. `recentlyResolved`: status
-  RESOLVED or CLOSED with `resolvedAt` in the last 30 rolling days (UTC), newest first. Ties
+  RESOLVED or CLOSED with `recentlyResolvedSince <= resolvedAt <= generatedAt`, newest first. Ties
   break by `id` descending.
+- Time rules (BR-28): `generatedAt` is captured once per request and used for every calculation,
+  passed to the database as a bound parameter (never SQL `NOW()` or `CURRENT_DATE`).
+  `recentlyResolvedSince` is `generatedAt` minus exactly 30 x 24 hours (2,592,000,000 ms), both
+  ends inclusive: a Ticket resolved exactly 30 days earlier is included, one millisecond older is
+  excluded. Both values are ISO-8601 UTC. The UI never recomputes the window; the server or
+  browser time zone cannot change which items appear.
 - `query` is the exact query string for the drill-down on `GET /api/tickets`; the card number
   must equal that query's `totalItems` (BR-31).
 - A user with no Tickets gets all counts 0 and empty arrays.

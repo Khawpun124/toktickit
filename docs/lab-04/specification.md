@@ -228,9 +228,22 @@ it can be demonstrated end to end.
   time. The client never computes metrics, and nothing is cached.
 - BR-27: "Active" statuses are NEW, OPEN, IN_PROGRESS, WAITING_FOR_REQUESTER, REOPENED.
   RESOLVED, CLOSED, and CANCELLED are not active.
-- BR-28: Time windows are rolling and evaluated in UTC (for example "last 30 days" means
-  now minus 30 times 24 hours). There are no calendar-day metrics, so day boundaries and
-  time zones cannot change a count. The UI shows timestamps in the browser's time zone.
+- BR-28: Dashboard time handling is fixed so the backend and the UI always agree.
+  1. Timestamps are stored and compared in UTC. At the start of each dashboard request the
+     server captures one instant, `generatedAt`, and uses that single value for every
+     calculation in the request. It is passed to the database as a bound parameter. SQL
+     `NOW()`, `CURRENT_DATE`, and the server or database time zone are never used, so the
+     process time zone cannot change a result.
+  2. The only time window is "Recently resolved". `recentlyResolvedSince` is `generatedAt`
+     minus 30 x 24 hours (exactly 2,592,000,000 ms). A Ticket is inside the window when
+     `recentlyResolvedSince <= resolvedAt <= generatedAt`, both ends inclusive. A resolved time
+     exactly 30 days earlier is included; one millisecond older is excluded.
+  3. There are no calendar-day metrics (no "today" or "this week"), so day boundaries and time
+     zones cannot change a count.
+  4. The API returns `generatedAt` and `recentlyResolvedSince` as ISO-8601 UTC strings. The UI
+     never recomputes a window or re-filters data; it only formats timestamps in the browser's
+     time zone for display. Changing the browser time zone changes how times are shown, never
+     which items or counts appear.
 - BR-29: List sizes are at most 5, with `id` descending as the tiebreaker.
 - BR-30: Requester dashboard data comes only from the authenticated user's Tickets. Any
   user id sent by the client is ignored.
@@ -296,7 +309,7 @@ See `docs/lab-04/ui-spec.md` for the full specification. Summary:
   user-counts card. A Refresh control re-fetches the data.
 - Actions Taken on Staff Ticket Detail: a section between Ticket Operations and the
   tabs, shown as a table on desktop and cards on mobile, with create and edit in an
-  accessible modal. Status shows as a text badge. Terminal Actions are read-only.
+  accessible modal. Status shows as a text badge and changes only through separate status buttons (Start, Mark completed, Cancel action), never through Save. Terminal Actions are read-only.
   Conflict (409) shows a readable message with a reload action, never raw JSON.
 - Actions Taken on Requester Ticket Detail: the same list, read-only, no create or edit
   controls rendered at all.
@@ -338,17 +351,108 @@ Additive Prisma migration. Nothing from Labs 1-3 is dropped or rewritten.
     `(currentStatus)` for dashboard counts and drill-down lists
 
 Migration and backfill
-- Steps, in one migration: create the enum and table, add the Ticket columns with
-  defaults, then backfill `resolvedAt = updatedAt` for Tickets that are RESOLVED or CLOSED
-  (the best available approximation of the resolution time). The backfill is plain,
-  deterministic SQL with no secrets and no password hashes.
-- Legacy Tickets without Actions Taken are valid: they show the empty Actions state,
-  can be resolved (BR-17 has no minimum), and are counted normally by dashboards.
-  All existing Users, Tickets, Attachments, Public Comments, and Internal Notes remain valid.
-- Recovery: take a `pg_dump` before applying. A documented manual rollback script drops
-  the new table, enum, and columns. The migration, the backfill, and the rollback are
-  tested by a script that simulates a Lab 3 database that already contains data
-  (not a fresh install) and prints a before and after comparison.
+
+Migration structure
+- One Prisma migration folder, `server/prisma/migrations/<timestamp>_add_actions_taken_and_workflow_fields/`,
+  with a hand-checked `migration.sql` wrapped in `BEGIN; ... COMMIT;` so it is all-or-nothing.
+- Statements can be repeated safely: `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
+  `CREATE INDEX IF NOT EXISTS`, and the enum is created inside a `DO` block that checks `pg_type` first.
+- Order inside the transaction: (1) create the enum, the table, its foreign keys and indexes;
+  (2) add `Ticket.version` (NOT NULL DEFAULT 1) and `Ticket.resolvedAt` (nullable); (3) add the
+  Ticket indexes; (4) backfill.
+- Backfill (deterministic, idempotent, no secrets, no password hashes):
+
+```sql
+UPDATE "Ticket" SET "resolvedAt" = "updatedAt"
+WHERE "currentStatus" IN ('RESOLVED', 'CLOSED') AND "resolvedAt" IS NULL;
+```
+
+  `updatedAt` is the best available approximation of the real resolution time. Tickets in other
+  statuses keep `resolvedAt` NULL, every existing Ticket gets `version` 1 from the column default,
+  and no ActionTaken rows are created.
+- Legacy Tickets without Actions Taken are valid: they show the empty Actions state, can be
+  resolved (BR-17 has no minimum), and are counted normally by dashboards. All existing Users,
+  Tickets, Attachments, Public Comments, and Internal Notes remain valid.
+
+Scripts (all under `server/`, run from the repository root with `npm run <name> --prefix server`)
+
+| Script | npm name | Purpose |
+|---|---|---|
+| `scripts/lab4-backup.ts` | `db:backup` | `pg_dump` through Docker into `backups/lab3-before-lab4-<UTC>.sql` |
+| `scripts/lab4-snapshot.ts` | `db:snapshot` | Row counts and per-row checksums of every Lab 1-3 table into `backups/snapshot-<UTC>.json` |
+| `scripts/lab4-verify.ts` | `db:verify:lab4` | Post-migration and post-rollback checks (below); exits non-zero on any failure |
+| `scripts/lab4-backfill.ts` | `db:backfill:lab4` | Runs only the idempotent backfill UPDATE and prints how many rows changed |
+| `scripts/lab4-rollback.ts` | `db:rollback:lab4` | Exports Actions Taken, then runs `prisma/rollback/lab4_down.sql` (needs `--confirm`) |
+| `prisma/rollback/lab4_down.sql` | | The reverse SQL, in one transaction |
+| `scripts/test-upgrade-path-lab4.ts` | | Automated proof of the whole procedure on a simulated Lab 3 database |
+
+The `backups/` folder is in `.gitignore` and is never committed.
+
+Upgrade procedure (existing Lab 3 database)
+1. Stop the backend and any test runs.
+2. `npm run db:backup --prefix server` (runs `docker compose exec -T postgres pg_dump -U <user> <db>`).
+3. `npm run db:snapshot --prefix server` and keep the printed file name.
+4. `cd server && npx prisma migrate deploy`.
+5. `npm run db:verify:lab4 --prefix server -- --snapshot backups/snapshot-<UTC>.json --at-upgrade`.
+6. Optionally run the seed, then start the application.
+
+Checks run by `db:verify:lab4` after the upgrade (it prints a table of table, before, after, match):
+- ActionTaken exists and has 0 rows.
+- Every Lab 1-3 table has the same row count as the snapshot.
+- Every Lab 1-3 table has identical per-row checksums for its original columns.
+- No Ticket has `version` other than 1.
+- No RESOLVED or CLOSED Ticket has `resolvedAt` NULL.
+- Every RESOLVED or CLOSED Ticket has `resolvedAt` equal to `updatedAt` (only with `--at-upgrade`).
+- No Ticket in another status has a `resolvedAt`.
+
+If the migration fails midway
+- The file is one transaction, so a failure leaves no partial change. Confirm with
+  `npm run db:verify:lab4 --prefix server -- --expect-absent`: ActionTaken, the enum, and the new
+  Ticket columns must not exist.
+- Prisma records the failure and refuses to continue (error P3009). Read the error (it names the
+  statement), fix the cause, then run `npx prisma migrate resolve --rolled-back <migration_name>`.
+- If verification still shows a partial state (it should not), stop and restore the backup
+  (Rollback, option B), then investigate. The error and the fix are written in the PR.
+
+Re-running
+- After `migrate resolve --rolled-back`, run `npx prisma migrate deploy` again; the same file
+  applies safely.
+- If the migration is already applied and only the backfill must be repeated (for example a
+  Ticket was resolved by an old application instance during the upgrade window), run
+  `npm run db:backfill:lab4 --prefix server`. A second run changes 0 rows.
+
+Rollback and recovery
+- Option A, reverse SQL (removes only Lab 4 objects; keeps all Lab 1-3 data and any data written
+  after the migration to Lab 3 tables):
+  1. Stop the application.
+  2. `npm run db:rollback:lab4 --prefix server -- --confirm`. The script refuses to run without
+     `--confirm`, prints how many Actions Taken rows will be lost, and first writes them to
+     `backups/actions-taken-export-<UTC>.json`.
+  3. In one transaction `lab4_down.sql` drops the ActionTaken table (its indexes and foreign keys
+     go with it), the `ActionStatus` enum, the Lab 4 Ticket indexes, `Ticket.version` and
+     `Ticket.resolvedAt`, and deletes the Lab 4 row from `_prisma_migrations` so the migration can be
+     applied again later.
+- Option B, restore the backup (the whole database returns to the moment of the backup and
+  everything written after it is lost). With `POSTGRES_USER` and `POSTGRES_DB` set from `.env`:
+
+```bash
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < backups/lab3-before-lab4-<UTC>.sql
+```
+
+Verifying that the original data came back
+- Run `npm run db:verify:lab4 --prefix server -- --snapshot backups/snapshot-<UTC>.json --after-rollback`.
+  It passes only when ActionTaken, the enum, the Ticket columns, and the Lab 4 migration row are
+  gone, and every Lab 1-3 table matches the snapshot in row count and per-row checksums. It prints
+  the same before and after table.
+- Then run the Lab 3 server tests and the Lab 3 upgrade-path script as a smoke check, and apply
+  the migration again to prove it can be re-applied.
+
+Automated proof: `server/scripts/test-upgrade-path-lab4.ts` builds a Lab 3 database with data, takes
+the snapshot, migrates, verifies, rolls back, verifies, migrates again, verifies; and also forces a
+failure in a copy of the migration, confirms nothing partial remains, resolves it, and re-runs. It
+prints every comparison table and exits non-zero on any mismatch (tests MIG-01 to MIG-03, MIG-07,
+MIG-08).
 
 Seed
 - Idempotent. Tickets cover every status, all priorities, and both owned and unowned
@@ -437,12 +541,16 @@ owned, 409 conflict (`STALE_VERSION`, `OPEN_ACTIONS_BLOCK_RESOLUTION`,
 - AC-31: Given the database is reachable, then `GET /api/health/ready` returns 200; given it is not, then 503; `GET /api/health` is unchanged.
 - AC-32: Given 500 seeded Tickets and their Actions, when the dashboards and Actions list are requested, then each responds within the smoke threshold of 1 second.
 - AC-33: Given the primary flows of every role, when they run end to end, then there are no console errors and no broken links.
+- AC-34: Given the migration fails midway, then no partial schema remains, and after the cause is fixed and `migrate resolve --rolled-back` is run, running the migration again succeeds.
+- AC-35: Given the rollback is run after a successful migration, then every Lab 1-3 table matches the pre-migration snapshot in row count and per-row checksums, the Lab 4 objects and migration record are gone, and the migration can be applied again.
+- AC-36: Given a Ticket resolved exactly 30 x 24 hours before `generatedAt`, then it is included in "Recently resolved", and one resolved 1 ms earlier is excluded; the results are identical whatever the server process time zone is.
+- AC-37: Given an Action edit request that contains `status` or `ticketId`, then it is rejected with 400; given a status change, then it goes only through the status endpoint, used by the dedicated status buttons in the UI.
 
 ## 10. Definition of Done
 
 Product completion
 - FR-01 to FR-24 are implemented and demonstrable.
-- AC-01 to AC-33 each pass with a linked automated test.
+- AC-01 to AC-37 each pass with a linked automated test.
 - All Lab 1-4 tests pass on a fresh database, repeated several times with no flaky result,
   on `main` and in CI (server, client, and end-to-end jobs all green).
 - The migration was proven with a simulated Lab 3 database containing data, including a
@@ -478,8 +586,7 @@ The labsheet leaves these open. They are decisions to review before implementati
 4. `expectedVersion` is required for new Action endpoints but optional on the existing
    Lab 3 Ticket endpoints, so Lab 3 clients and tests keep working. It can become required
    in a later release.
-5. Dashboards use rolling UTC windows and no calendar-day metrics, which avoids time-zone
-   and day-boundary ambiguity.
+5. Dashboards use one server-captured UTC instant (`generatedAt`) and a single inclusive 30 x 24 hour window (BR-28), with no calendar-day metrics, so time zones and day boundaries cannot change a result.
 6. All Action Taken fields are visible to the Requester (labsheet 8.3). The UI warns staff,
    and private information belongs in Internal Notes.
 7. Idempotent creation uses a client-supplied `clientRequestId`, chosen over time-window
