@@ -94,8 +94,7 @@ shape for their own Ticket's Actions (labsheet 8.3); no email addresses are incl
 
 Field rules (BR-05 to BR-10): `description` 5-1000 characters, `result` 5-1000, `followUpNote`
 5-500, `attachmentNotes` up to 500, all trimmed. `followUpNote` is required when
-`followUpRequired` is true and is stored as `null` when it is false. `result` is required to
-complete or cancel. `actionAt` for `IN_PROGRESS` or `COMPLETED` may not be more than 5
+`followUpRequired` is true and is stored as `null` when it is false. `result` is required to create an Action as `COMPLETED` and to move an Action to `COMPLETED` or `CANCELLED` (for `CANCELLED` it is the reason). `actionAt` for `IN_PROGRESS` or `COMPLETED` may not be more than 5
 minutes in the future; for `PLANNED` it may be at most 30 days in the future.
 
 ## 2. GET /api/tickets/:id/actions
@@ -129,7 +128,7 @@ Request:
 }
 ```
 
-Required: `description`. Optional with defaults: `actionAt` (now), `status` (`PLANNED`; only
+Required: `description`, and `result` (5-1000 characters, trimmed) when `status` is `COMPLETED`. `result` is optional for `PLANNED` and `IN_PROGRESS`. Because this depends only on the request body, a missing `result` on a `COMPLETED` create is a 400 `VALIDATION_FAILED` with `fields.result` at check-order step 5, before any state check. Optional with defaults: `actionAt` (now), `status` (`PLANNED`; only
 `PLANNED`, `IN_PROGRESS`, or `COMPLETED` are allowed at creation, never `CANCELLED`),
 `assigneeId` (the current user), `followUpRequired` (false). `clientRequestId` is an optional
 UUID; the UI always sends one. Ignored: `performedBy`, `version`, `createdAt`, `updatedAt`.
@@ -151,6 +150,7 @@ Responses:
   "error": "Validation failed",
   "code": "VALIDATION_FAILED",
   "fields": {
+    "result": "A result is required when the action is created as completed.",
     "followUpNote": "A follow-up note is required when follow-up is needed.",
     "assigneeId": "The assignee must be an active IT Staff or Administrator."
   }
@@ -263,6 +263,7 @@ Lab 4 behavior:
 
 - A Ticket with zero Actions can be resolved. A COMPLETED Action marked as needing follow-up
   does not block.
+- Every successful status transition sets `statusChangedAt` to the current time (BR-39); owner, priority, comment, and Action changes never do.
 - `RESOLVED` sets `resolvedAt`. `REOPENED` clears `resolvedAt` and resets
   `problemAppearsResolved` to false.
 - `CANCELLED` cancels every `PLANNED` or `IN_PROGRESS` Action in the same transaction (Result
@@ -288,10 +289,10 @@ behavior.
 status, owner, and priority endpoints, gain:
 
 ```json
-{ "version": 4, "resolvedAt": "2026-10-12T10:00:00.000Z" }
+{ "version": 4, "resolvedAt": "2026-10-12T10:00:00.000Z", "statusChangedAt": "2026-10-12T10:00:00.000Z" }
 ```
 
-`resolvedAt` is `null` unless the Ticket is Resolved or Closed. `GET /api/staff/tickets/:id`
+`resolvedAt` is `null` unless the Ticket is Resolved or Closed. `statusChangedAt` is when the Ticket's status last changed (its creation time if it never changed). `GET /api/staff/tickets/:id`
 also gains `"openActionsCount": 2`. All earlier fields are unchanged.
 
 ## 7. List filter change (additive)
@@ -325,7 +326,7 @@ Response 200:
     "closed": { "count": 12, "query": "currentStatus=CLOSED" }
   },
   "needsAttention": [
-    { "id": 88, "ticketNumber": "TKT-2026-000088", "summary": "VPN disconnects randomly", "currentStatus": "WAITING_FOR_REQUESTER", "updatedAt": "2026-10-09T07:00:00.000Z" }
+    { "id": 88, "ticketNumber": "TKT-2026-000088", "summary": "VPN disconnects randomly", "currentStatus": "WAITING_FOR_REQUESTER", "waitingSince": "2026-10-08T07:00:00.000Z", "updatedAt": "2026-10-09T07:00:00.000Z" }
   ],
   "recentlyUpdated": [
     { "id": 101, "ticketNumber": "TKT-2026-000101", "summary": "Laptop battery drains quickly", "currentStatus": "IN_PROGRESS", "updatedAt": "2026-10-12T09:02:44.000Z" }
@@ -337,10 +338,10 @@ Response 200:
 ```
 
 - Counts come from the database at request time with the single `generatedAt` instant; nothing is cached (BR-26).
-- Each list holds at most 5 items. `needsAttention`: WAITING_FOR_REQUESTER, oldest `updatedAt`
-  first. `recentlyUpdated`: any status, newest `updatedAt` first. `recentlyResolved`: status
-  RESOLVED or CLOSED with `recentlyResolvedSince <= resolvedAt <= generatedAt`, newest first. Ties
-  break by `id` descending.
+- Each list holds at most 5 items, and ties break by `id` in the same direction as the primary order (BR-29).
+  - `needsAttention`: status WAITING_FOR_REQUESTER, longest waiting first, meaning `statusChangedAt` ascending, then `id` ascending. Each item carries `waitingSince` (the Ticket's `statusChangedAt`), which is when it entered Waiting for Requester, not when it was last edited. A later comment or edit does not reorder it, and a Ticket that leaves and re-enters Waiting is counted from the new entry (BR-39).
+  - `recentlyUpdated`: any status, `updatedAt` descending, then `id` descending.
+  - `recentlyResolved`: status RESOLVED or CLOSED with `recentlyResolvedSince <= resolvedAt <= generatedAt`, `resolvedAt` descending, then `id` descending.
 - Time rules (BR-28): `generatedAt` is captured once per request and used for every calculation,
   passed to the database as a bound parameter (never SQL `NOW()` or `CURRENT_DATE`).
   `recentlyResolvedSince` is `generatedAt` minus exactly 30 x 24 hours (2,592,000,000 ms), both
@@ -383,9 +384,7 @@ Response 200:
 
 - `users` is present only for an Administrator and is omitted for IT Staff (BR-30).
 - "Active" statuses are NEW, OPEN, IN_PROGRESS, WAITING_FOR_REQUESTER, REOPENED.
-- Lists hold at most 5 items, ties by `id` descending: `myRecentTickets` (owned by me, newest
-  `updatedAt` first), `myOpenActions` (assigned to me, PLANNED or IN_PROGRESS, earliest
-  `actionAt` first), `urgentTickets` (active with IT Priority HIGH, oldest `updatedAt` first).
+- Lists hold at most 5 items, and ties break by `id` in the same direction as the primary order (BR-29): `myRecentTickets` (owned by me, `updatedAt` descending, `id` descending), `myOpenActions` (assigned to me, PLANNED or IN_PROGRESS, `actionAt` ascending, `id` ascending), `urgentTickets` (active with IT Priority HIGH, least recently updated first: `updatedAt` ascending, `id` ascending).
 - `query` is the drill-down for `GET /api/staff/tickets`; each card number equals that
   query's `totalItems`.
 - A user with nothing to show gets counts 0 and empty arrays.

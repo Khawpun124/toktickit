@@ -126,9 +126,7 @@ it can be demonstrated end to end.
   in the future; for PLANNED it may be at most 30 days in the future.
 - BR-06: `createdAt`, `updatedAt`, and `version` are system-generated and cannot be set by the client.
 - BR-07: Action Description is required, trimmed, 5 to 1000 characters.
-- BR-08: Result is optional while the Action is PLANNED or IN_PROGRESS, and required
-  (trimmed, 5 to 1000 characters) to complete or cancel it. For CANCELLED the Result
-  holds the cancellation reason.
+- BR-08: Result is optional while the Action is PLANNED or IN_PROGRESS. It is required (trimmed, 5 to 1000 characters) when an Action is created as COMPLETED and when an Action is moved to COMPLETED or CANCELLED. For CANCELLED the Result holds the cancellation reason. The create case depends only on the request body, so it is a 400 on the `result` field before any state check.
 - BR-09: Follow-Up Required defaults to false. When true, Follow-up Note is required
   (trimmed, 5 to 500 characters). When false the server stores no Follow-up Note.
 - BR-10: Attachment Notes is optional free text up to 500 characters describing which
@@ -244,7 +242,7 @@ it can be demonstrated end to end.
      never recomputes a window or re-filters data; it only formats timestamps in the browser's
      time zone for display. Changing the browser time zone changes how times are shown, never
      which items or counts appear.
-- BR-29: List sizes are at most 5, with `id` descending as the tiebreaker.
+- BR-29: List sizes are at most 5. Every list has a stated primary order, and ties break by `id` in the same direction as that order (newest-first lists: `id` descending; oldest-first or earliest-first lists: `id` ascending), so the order is always deterministic.
 - BR-30: Requester dashboard data comes only from the authenticated user's Tickets. Any
   user id sent by the client is ignored.
 - BR-31: A card's number must equal the total of the list it links to. This is tested.
@@ -259,7 +257,7 @@ Requester dashboard
 | Waiting for you | status WAITING_FOR_REQUESTER | `/tickets?currentStatus=WAITING_FOR_REQUESTER` |
 | Resolved | status RESOLVED | `/tickets?currentStatus=RESOLVED` |
 | Closed | status CLOSED | `/tickets?currentStatus=CLOSED` |
-| Needs your attention (list) | up to 5 WAITING_FOR_REQUESTER, oldest `updatedAt` first | `/tickets/:id` per row |
+| Needs your attention (list) | up to 5 WAITING_FOR_REQUESTER, longest waiting first: `statusChangedAt` ascending, then `id` ascending (BR-39) | `/tickets/:id` per row |
 | Recently updated (list) | up to 5, any status, newest `updatedAt` first | `/tickets/:id` per row |
 | Recently resolved (list) | up to 5 RESOLVED or CLOSED with `resolvedAt` in the last 30 days, newest first | `/tickets/:id` per row |
 
@@ -275,7 +273,7 @@ IT Staff / Administrator dashboard
 | High IT Priority | IT Priority HIGH and active status | `/staff/tickets?itPriority=HIGH&currentStatus=<active list>` |
 | My recent Tickets (list) | up to 5 owned by me, newest `updatedAt` first | `/staff/tickets/:id` per row |
 | My open Actions (list) | up to 5 Actions assigned to me with status PLANNED or IN_PROGRESS, earliest `actionAt` first | `/staff/tickets/:ticketId` per row |
-| Urgent Tickets (list) | up to 5 active Tickets with IT Priority HIGH, oldest `updatedAt` first | `/staff/tickets/:id` per row |
+| Urgent Tickets (list) | up to 5 active Tickets with IT Priority HIGH, least recently updated first (`updatedAt` ascending, then `id` ascending), so urgent Tickets nobody has touched come first | `/staff/tickets/:id` per row |
 | User counts (Administrator only) | number of active and inactive users | `/admin/users` |
 
 ### Hardening and regression
@@ -292,6 +290,16 @@ IT Staff / Administrator dashboard
   returns 200 `{ "status": "ready" }` or 503 `{ "status": "unavailable" }`.
 - BR-38: The seed is idempotent (safe to run repeatedly) and documents its development
   credentials. It contains no real secrets.
+
+### Waiting time for the Requester
+- BR-39: The time a Ticket has waited is measured from `statusChangedAt`, the instant of its
+  most recent status transition. It is set when the Ticket is created and on every status
+  transition, and by nothing else: comments, owner, IT Priority, Action Taken changes, and other
+  edits do not change it, so a later edit never makes a Ticket look like it has waited less. A
+  Ticket that leaves WAITING_FOR_REQUESTER and returns starts a new wait from the new entry. For
+  Tickets that existed before Lab 4 it is backfilled with `updatedAt`, the best available
+  approximation (the true time was never recorded). "Needs your attention" is ordered by this
+  value, longest waiting first.
 
 ## 6. UI Specification Summary
 
@@ -342,7 +350,7 @@ Additive Prisma migration. Nothing from Labs 1-3 is dropped or rewritten.
   - `clientRequestId` String, nullable, unique together with `performedById`
   - `version` Int, default 1
   - `createdAt`, `updatedAt` DateTime
-- Ticket gains `version` Int default 1 and `resolvedAt` DateTime nullable.
+- Ticket gains `version` Int default 1, `resolvedAt` DateTime nullable, and `statusChangedAt` DateTime (required, default now; BR-39).
 - Indexes:
   - ActionTaken `(ticketId, createdAt, id)` for the ordered list
   - ActionTaken `(ticketId, status)` for the resolution gate count
@@ -358,18 +366,21 @@ Migration structure
 - Statements can be repeated safely: `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
   `CREATE INDEX IF NOT EXISTS`, and the enum is created inside a `DO` block that checks `pg_type` first.
 - Order inside the transaction: (1) create the enum, the table, its foreign keys and indexes;
-  (2) add `Ticket.version` (NOT NULL DEFAULT 1) and `Ticket.resolvedAt` (nullable); (3) add the
-  Ticket indexes; (4) backfill.
+  (2) add `Ticket.version` (NOT NULL DEFAULT 1), `Ticket.resolvedAt` (nullable), and `Ticket.statusChangedAt` (added as nullable first); (3) add the Ticket indexes; (4) backfill, then give `statusChangedAt` its default and make it NOT NULL.
 - Backfill (deterministic, idempotent, no secrets, no password hashes):
 
 ```sql
 UPDATE "Ticket" SET "resolvedAt" = "updatedAt"
 WHERE "currentStatus" IN ('RESOLVED', 'CLOSED') AND "resolvedAt" IS NULL;
+
+UPDATE "Ticket" SET "statusChangedAt" = "updatedAt" WHERE "statusChangedAt" IS NULL;
+ALTER TABLE "Ticket" ALTER COLUMN "statusChangedAt" SET DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "Ticket" ALTER COLUMN "statusChangedAt" SET NOT NULL;
 ```
 
   `updatedAt` is the best available approximation of the real resolution time. Tickets in other
   statuses keep `resolvedAt` NULL, every existing Ticket gets `version` 1 from the column default,
-  and no ActionTaken rows are created.
+  and no ActionTaken rows are created. `statusChangedAt` is backfilled with `updatedAt` for the same reason (the real time of the last status change was never recorded), so the order of "Needs your attention" for Tickets that were already waiting before the upgrade is approximate, and exact for every Ticket that changes status afterwards. Each statement above can be repeated safely: a second run finds no NULL values and changes nothing.
 - Legacy Tickets without Actions Taken are valid: they show the empty Actions state, can be
   resolved (BR-17 has no minimum), and are counted normally by dashboards. All existing Users,
   Tickets, Attachments, Public Comments, and Internal Notes remain valid.
@@ -404,6 +415,8 @@ Checks run by `db:verify:lab4` after the upgrade (it prints a table of table, be
 - No RESOLVED or CLOSED Ticket has `resolvedAt` NULL.
 - Every RESOLVED or CLOSED Ticket has `resolvedAt` equal to `updatedAt` (only with `--at-upgrade`).
 - No Ticket in another status has a `resolvedAt`.
+- No Ticket has `statusChangedAt` NULL.
+- Every Ticket has `statusChangedAt` equal to `updatedAt` (only with `--at-upgrade`).
 
 If the migration fails midway
 - The file is one transaction, so a failure leaves no partial change. Confirm with
@@ -429,8 +442,7 @@ Rollback and recovery
      `--confirm`, prints how many Actions Taken rows will be lost, and first writes them to
      `backups/actions-taken-export-<UTC>.json`.
   3. In one transaction `lab4_down.sql` drops the ActionTaken table (its indexes and foreign keys
-     go with it), the `ActionStatus` enum, the Lab 4 Ticket indexes, `Ticket.version` and
-     `Ticket.resolvedAt`, and deletes the Lab 4 row from `_prisma_migrations` so the migration can be
+     go with it), the `ActionStatus` enum, the Lab 4 Ticket indexes, `Ticket.version`, `Ticket.resolvedAt`, and `Ticket.statusChangedAt`, and deletes the Lab 4 row from `_prisma_migrations` so the migration can be
      applied again later.
 - Option B, restore the backup (the whole database returns to the moment of the backup and
   everything written after it is lost). With `POSTGRES_USER` and `POSTGRES_DB` set from `.env`:
@@ -545,12 +557,13 @@ owned, 409 conflict (`STALE_VERSION`, `OPEN_ACTIONS_BLOCK_RESOLUTION`,
 - AC-35: Given the rollback is run after a successful migration, then every Lab 1-3 table matches the pre-migration snapshot in row count and per-row checksums, the Lab 4 objects and migration record are gone, and the migration can be applied again.
 - AC-36: Given a Ticket resolved exactly 30 x 24 hours before `generatedAt`, then it is included in "Recently resolved", and one resolved 1 ms earlier is excluded; the results are identical whatever the server process time zone is.
 - AC-37: Given an Action edit request that contains `status` or `ticketId`, then it is rejected with 400; given a status change, then it goes only through the status endpoint, used by the dedicated status buttons in the UI.
+- AC-38: Given several Tickets waiting for the Requester, when "Needs your attention" is retrieved, then they are ordered by time since entering WAITING_FOR_REQUESTER (longest first, ties by `id` ascending); a later comment, owner, priority, or other edit does not change the order, and a Ticket that leaves and re-enters Waiting is counted from the new entry.
 
 ## 10. Definition of Done
 
 Product completion
 - FR-01 to FR-24 are implemented and demonstrable.
-- AC-01 to AC-37 each pass with a linked automated test.
+- AC-01 to AC-38 each pass with a linked automated test.
 - All Lab 1-4 tests pass on a fresh database, repeated several times with no flaky result,
   on `main` and in CI (server, client, and end-to-end jobs all green).
 - The migration was proven with a simulated Lab 3 database containing data, including a
@@ -597,3 +610,4 @@ The labsheet leaves these open. They are decisions to review before implementati
 9. The `currentStatus` list filter on two existing endpoints is extended additively so
    dashboard cards with several statuses can link to a filtered list.
 10. Performance is a smoke check (1 second at 500 Tickets in CI), not a service-level target.
+11. "Longest waiting" is measured from a new `statusChangedAt` column (the last status transition), not from `updatedAt`, because any edit changes `updatedAt` and would make a Ticket look as if it had waited less. Existing Tickets are backfilled with `updatedAt` as the best available approximation.

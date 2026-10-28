@@ -67,6 +67,10 @@ Lab 1-3 และต้องตัดสินใจเรื่องที่
       ว่า Ticket, Comment, Note, Attachment เดิมครบและถูกต้อง
 - [ ] Migration เป็นไฟล์ที่ห่อด้วย `BEGIN; ... COMMIT;` และรันซ้ำได้ (`IF NOT EXISTS`) พร้อม
       backfill `resolvedAt` ที่ idempotent
+- [ ] เพิ่มคอลัมน์ `Ticket.statusChangedAt` (เพิ่มแบบ nullable, backfill ด้วย `updatedAt`, แล้วตั้ง
+      default และ NOT NULL) และให้ handler เปลี่ยนสถานะเดิมของ Lab 3 ตั้งค่านี้ทุกครั้งที่สถานะเปลี่ยน
+      (เจ้าของ, priority, comment และการแก้ Action ไม่เปลี่ยนค่านี้)
+- [ ] สร้าง Action เป็น COMPLETED ต้องมี Result (400 ที่ `fields.result` ตรวจจาก request body)
 - [ ] สร้างและทดสอบสคริปต์ตาม spec หัวข้อ 7: `db:backup`, `db:snapshot`, `db:verify:lab4`,
       `db:backfill:lab4`, `db:rollback:lab4` และ `prisma/rollback/lab4_down.sql` (โฟลเดอร์
       `backups/` อยู่ใน `.gitignore`)
@@ -158,6 +162,8 @@ Lab 1-3 และต้องตัดสินใจเรื่องที่
 - [ ] API dashboard ของ IT Staff: unassigned, ของฉัน, ตาม status/priority,
       ล่าสุด และ Actions Taken ของผู้ใช้ปัจจุบันตาม spec
 - [ ] ตอบเฉพาะ metric และรายการสั้นๆ ไม่ส่ง Ticket ทั้งชุด
+- [ ] "Needs your attention" เรียงตาม `statusChangedAt` (รอนานที่สุดก่อน, tie ตาม `id` จากน้อยไปมาก)
+      แสดง "Waiting since" และการแก้ไข/คอมเมนต์ภายหลังไม่ทำให้ลำดับเปลี่ยน
 - [ ] ใช้ `generatedAt` เดียวต่อหนึ่ง request และหน้าต่าง 30 วันแบบ inclusive ตาม BR-28
       ทดสอบขอบเขต (30 วันพอดีรวมอยู่ 30 วันกับ 1 ms ไม่รวม) และรันภายใต้ TZ หลายค่า
 - [ ] ทุก card มี empty behavior และ drill-down ที่เปิด Queue/My Tickets/

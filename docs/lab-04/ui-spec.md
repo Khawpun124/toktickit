@@ -82,7 +82,7 @@ filtered Queue exists):
 - My recent Tickets: ticket number, summary, status badge, last updated.
 - My open Actions: description, ticket number, Action status badge, action date/time.
   Opens the Ticket Detail of that Ticket.
-- Urgent Tickets: ticket number, summary, IT Priority badge, status badge, last updated.
+- Urgent Tickets: ticket number, summary, IT Priority badge, status badge, last updated. Ordered least recently updated first, so urgent Tickets that nobody has touched appear first.
 
 Quick actions panel: Open My Queue, Search Tickets (opens the Queue with the search box
 focused), Create Ticket.
@@ -112,8 +112,7 @@ Metric cards (links, same accessible-name pattern):
 | Closed | CLOSED | My Tickets filtered to Closed |
 
 Lists (rows open Requester Ticket Detail):
-- Needs your attention: Tickets waiting for the Requester, longest waiting first. This
-  list has a distinct callout style when it is not empty.
+- Needs your attention: Tickets waiting for the Requester, longest waiting first. Waiting time is counted from when the Ticket entered Waiting for Requester (`waitingSince` in the API), not from its last edit, so a later comment or edit never moves a row. Each row shows the ticket number, the summary, and "Waiting since <date and time>". This list has a distinct callout style when it is not empty.
 - Recently updated: ticket number, summary, status badge, last updated.
 - Recently resolved: Resolved or Closed in the last 30 days.
 
@@ -159,8 +158,7 @@ Dialog (one component, three modes):
   4. Assigned to (required; lists only active IT Staff and Administrators; defaults to the
      current user)
   5. Performed by (read-only, filled automatically, ivory read-only styling)
-  6. Result (multiline, counter to 1000; shows the required asterisk when Status is
-     COMPLETED or CANCELLED, and then the label reads "Result (reason, if cancelled)")
+  6. Result (multiline, counter to 1000; in create mode it shows the required asterisk, and an error if left empty, when Status is COMPLETED; in the status step panel it is required to complete or cancel, and the cancel label reads "Reason for cancelling")
   7. Follow-up required? (switch). When on, the Follow-up Note (required, counter to 500)
      appears directly below; when off it is hidden and cleared.
   8. Attachment Notes (optional, up to 500), with helper text "Describe which file to look

@@ -7,7 +7,7 @@ drive the work (TDD): write the failing test, implement the smallest correct beh
 refactor while everything stays green. Coverage spans unit, API/integration, UI
 component, UI style, accessibility, responsive, authorization/security, workflow,
 concurrency, migration/regression, performance-smoke, and end-to-end levels. Every
-Acceptance Criterion (AC-01 to AC-37) maps to at least one test with a real file path.
+Acceptance Criterion (AC-01 to AC-38) maps to at least one test with a real file path.
 
 Test data and isolation rules (learned from Labs 2-3):
 - Vitest runs test files in parallel against one shared database. A test must not assume
@@ -43,7 +43,7 @@ Status legend (the Final column):
 | Test ID | Type | Requirement / AC | What It Tests | Expected Result | Automated Test File | Planned Issue | Final |
 |---|---|---|---|---|---|---|---|
 | UNIT-01 | Unit | BR-11, AC-08 | Action status matrix validator | Five allowed pairs pass; every other pair rejected; terminal states have no exits | `server/tests/lab-04/action-status.unit.test.ts` | Issue 2 | Pending |
-| UNIT-02 | Unit | BR-07 to BR-10, AC-05, AC-09 | Action field validation: trimming, 5-1000 and 5-500 limits, follow-up note rule, Result required to complete or cancel | Valid input passes; each violation names its field | `server/tests/lab-04/action-validation.unit.test.ts` | Issue 2 | Pending |
+| UNIT-02 | Unit | BR-07 to BR-10, AC-05, AC-09 | Action field validation: trimming, 5-1000 and 5-500 limits, follow-up note rule, Result required to create as COMPLETED, to complete, or to cancel | Valid input passes; each violation names its field | `server/tests/lab-04/action-validation.unit.test.ts` | Issue 2 | Pending |
 | UNIT-03 | Unit | BR-05 | `actionAt` window: IN_PROGRESS/COMPLETED not over 5 min ahead, PLANNED up to 30 days ahead | Boundary values accepted and rejected correctly | `server/tests/lab-04/action-validation.unit.test.ts` | Issue 2 | Pending |
 | UNIT-04 | Unit | BR-16 | Ticket transition matrix lookup (14 pairs) | All 14 allowed; sampled invalid pairs rejected; Cancelled terminal | `server/tests/lab-04/ticket-transition.unit.test.ts` | Issue 4 | Pending |
 | UNIT-05 | Unit | BR-27, BR-28 | Dashboard helpers: active status list, rolling 30-day window in UTC | Window is `generatedAt - 30 x 24 h`, both ends inclusive: exactly 30 days is in, 30 days plus 1 ms is out; the helper never reads the process time zone | `server/tests/lab-04/dashboard-helpers.unit.test.ts` | Issue 5 | Pending |
@@ -57,7 +57,7 @@ Status legend (the Final column):
 | API-07 | API | AC-06, BR-04 | Assignee inactive, a Requester, or unknown | 400 with field-level error each time | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
 | API-08 | API | AC-07, BR-03 | Body contains `performedBy`, `version`, `createdAt`, or `updatedAt` | All ignored; the session user and server-generated values are stored | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
 | API-09 | API | AC-08, BR-11 | Edit or status change on a terminal Action; invalid status pair | 409 `ACTION_TERMINAL`; 400 for invalid pair | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
-| API-10 | API | AC-09, BR-08 | Complete or cancel without Result | 400 for each | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
+| API-10 | API | AC-09, BR-08 | Complete or cancel without Result; create directly as COMPLETED without Result | 400 with `fields.result` for each (the create case is a request-body check, step 5 of the check order); creating as PLANNED or IN_PROGRESS without a Result succeeds | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
 | API-11 | API | AC-10, BR-12 | DELETE attempt; order after edits | No delete route (404 or 405); list order unchanged after editing an early Action | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
 | API-12 | API | AC-11, BR-22 | Action update with stale `expectedVersion`; missing `expectedVersion` | 409 `STALE_VERSION` and newer data intact; 400 when missing | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
 | API-13 | API | AC-12, BR-24 | Same `clientRequestId` sent twice, including in parallel | One row; second response 200 with the original; the same id used for another Ticket gives 400 | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
@@ -80,16 +80,18 @@ Status legend (the Final column):
 | API-30 | API | BR-26, BR-29 | Each Requester metric and list against its database query | Counts exact; lists capped at 5 and correctly ordered; response carries `generatedAt` and `recentlyResolvedSince` | `server/tests/lab-04/requester-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-31 | API | AC-22 | Requester calls staff dashboard; Staff and Administrator call Requester dashboard | 403 in every case | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-32 | API | AC-20, BR-26 | Each staff metric against its database query | All six counts exact | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
-| API-33 | API | BR-29 | Staff lists: My recent Tickets, My open Actions, Urgent Tickets | Correct filter, ordering, and cap | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
+| API-33 | API | BR-29 | Staff lists: My recent Tickets, My open Actions, Urgent Tickets | Correct filter, ordering, and cap; Urgent Tickets are least recently updated first, ties by `id` ascending | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-34 | API | AC-24, BR-30 | User counts in staff dashboard | Present for Administrator; absent for IT Staff | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-35 | API | AC-21, BR-31 | Follow each card's drill-down query on the list endpoints | List `totalItems` equals the card number | `server/tests/lab-04/staff-dashboard.api.test.ts` and `requester-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-36 | API | Additive change | `currentStatus` comma list on both list endpoints | Valid list works; any invalid value returns 400 | `server/tests/lab-04/status-list-filter.api.test.ts` | Issue 5 | Pending |
 | API-37 | API | BR-28 | Rolling window edge for "Recently resolved" | Resolved exactly 30 days before `generatedAt` is included; 30 days plus 1 ms is excluded (fake clock); `recentlyResolvedSince` equals `generatedAt` minus 30 x 24 h | `server/tests/lab-04/requester-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-38 | API | AC-31, BR-37 | Readiness and health endpoints | `/api/health/ready` 200 when connected, 503 when the database is unreachable; `/api/health` unchanged | `server/tests/lab-04/health-ready.api.test.ts` | Issue 6 | Pending |
-| API-39 | API | Section 8 additive fields | Ticket responses | `version`, `resolvedAt`, `openActionsCount` present; all earlier fields unchanged | `server/tests/lab-04/ticket-responses.api.test.ts` | Issue 4 | Pending |
+| API-39 | API | Section 8 additive fields | Ticket responses | `version`, `resolvedAt`, `statusChangedAt`, `openActionsCount` present; all earlier fields unchanged | `server/tests/lab-04/ticket-responses.api.test.ts` | Issue 4 | Pending |
 | API-40 | API | AC-37, BR-01 | Edit endpoint with `status` or `ticketId` in the body; a body with no changes | 400 `VALIDATION_FAILED` pointing to the status endpoint; 400 "No changes supplied"; nothing changed | `server/tests/lab-04/actions-taken.api.test.ts` | Issue 2 | Pending |
 | API-41 | API | AC-36, BR-28 | Dashboards with the server process run under TZ=UTC, Asia/Bangkok, and America/Los_Angeles | Identical counts and lists; `generatedAt` and `recentlyResolvedSince` are UTC strings | `server/tests/lab-04/requester-dashboard.api.test.ts` (run once per TZ value) | Issue 5 | Pending |
 | API-42 | API | API spec section 0 check order | Table-driven requests that break several rules at once (no session, password change required, wrong role, missing resource, invalid body, stale version, terminal Action) | The first failing check in the documented order decides the response | `server/tests/lab-04/check-order.api.test.ts` | Issues 2, 4 | Pending |
+| API-43 | API | AC-38, BR-39 | `statusChangedAt` maintenance | Set at creation; changed by every status transition; not changed by owner, IT Priority, comment, Action, or other edits; reopening and re-entering Waiting restarts the clock | `server/tests/lab-04/status-changed-at.api.test.ts` | Issue 2 | Pending |
+| API-44 | API | AC-38, BR-29, BR-39 | Needs-your-attention ordering | Longest waiting first by `statusChangedAt`; a later comment or edit to the longest-waiting Ticket does not reorder; a Ticket that leaves and re-enters Waiting is counted from the new entry; equal times order by `id` ascending; each row carries `waitingSince` | `server/tests/lab-04/requester-dashboard.api.test.ts` | Issue 5 | Pending |
 | SEC-01 | Authorization | BR-25 | Table-driven: every new write endpoint as Requester | 403 each time, no data changed | `server/tests/lab-04/authorization.api.test.ts` | Issues 2, 4, 5 | Pending |
 | SEC-02 | Authorization | BR-25 | Every new endpoint without a session | 401 each time | `server/tests/lab-04/authorization.api.test.ts` | Issues 2, 4, 5 | Pending |
 | SEC-03 | Authorization | Lab 3 BR-02 | User who must change password calls new endpoints | Blocked until the password is changed | `server/tests/lab-04/authorization.api.test.ts` | Issues 2, 4, 5 | Pending |
@@ -98,7 +100,7 @@ Status legend (the Final column):
 | PERF-01 | Performance-smoke | AC-32 | Both dashboards with 500 seeded Tickets | Each responds in under 1 second | `server/tests/lab-04/performance-smoke.test.ts` | Issue 5 | Pending |
 | PERF-02 | Performance-smoke | AC-32 | Actions list for a Ticket with 200 Actions | Responds in under 1 second | `server/tests/lab-04/performance-smoke.test.ts` | Issue 2 | Pending |
 | MIG-01 | Migration/Regression | AC-25 | Simulated Lab 3 database with data, then Lab 4 migration | Snapshot taken first, then migration: every Lab 1-3 table has the same row count and per-row checksums, and the comparison table is printed | `server/scripts/test-upgrade-path-lab4.ts` | Issue 2 | Pending |
-| MIG-02 | Migration/Regression | AC-25, Section 7 | Backfill result | `version` is 1; `resolvedAt` equals `updatedAt` for RESOLVED and CLOSED; no Actions exist | `server/tests/lab-04/migration.test.ts` | Issue 2 | Pending |
+| MIG-02 | Migration/Regression | AC-25, Section 7 | Backfill result | `version` is 1; `resolvedAt` equals `updatedAt` for RESOLVED and CLOSED; `statusChangedAt` equals `updatedAt` for every Ticket and is never NULL; no Actions exist | `server/tests/lab-04/migration.test.ts` | Issue 2 | Pending |
 | MIG-03 | Migration/Regression | Section 7 recovery | Rollback (`db:rollback:lab4 -- --confirm`) after a successful migration, and the backup restore procedure | Actions exported first; Lab 4 objects and the migration record removed; every Lab 3 table equals the snapshot (counts and per-row checksums); the migration can be applied again | `server/scripts/test-upgrade-path-lab4.ts` | Issue 2 | Pending |
 | MIG-04 | Migration/Regression | AC-27 | Run the seed twice | No duplicates; every status present; Tickets with 0, 1, and many Actions; users for zero and non-zero dashboards | `server/tests/lab-04/seed.test.ts` | Issue 2 | Pending |
 | MIG-05 | Migration/Regression | AC-26 | Lab 1-3 test files unchanged and passing | No diff against `main` for old test files; all pass | `server/tests/lab-01/*`, `server/tests/lab-02/*`, `server/tests/lab-03/*`, `client/tests/lab-01/*`, `client/tests/lab-02/*`, `client/tests/lab-03/*` | Every Issue, final in Issue 7 | Pending |
@@ -106,7 +108,7 @@ Status legend (the Final column):
 | MIG-07 | Migration/Regression | AC-34 | Force a failure in the middle of a copy of the migration | Nothing partial remains; after the cause is fixed and `migrate resolve --rolled-back`, running it again succeeds | `server/scripts/test-upgrade-path-lab4.ts` | Issue 2 | Pending |
 | MIG-08 | Migration/Regression | AC-25, AC-35 | `db:verify:lab4` after the upgrade and after the rollback | After the upgrade every check passes; after the rollback ActionTaken, the enum, the columns, and the migration record are gone and every Lab 3 table equals the snapshot; applying again works | `server/scripts/test-upgrade-path-lab4.ts` | Issue 2 | Pending |
 | UI-01 | UI | FR-04, FR-17 | Actions Taken list renders (table and cards) with empty state | Rows in stable order; text status badges; empty message when none | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
-| UI-02 | UI | AC-05, AC-09 | Create and edit modal validation | Field-level errors; follow-up note error appears only when required | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
+| UI-02 | UI | AC-05, AC-09 | Create and edit modal validation | Field-level errors; follow-up note error appears only when required; Result shows its asterisk and an error when Status is COMPLETED in create mode | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
 | UI-03 | UI | AC-12, AC-28 | Double click on submit | One request; submit disabled while in flight; `clientRequestId` sent | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
 | UI-04 | UI | AC-28, BR-34 | 409 and network failure on save | Readable message with reload action; entered values kept | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
 | UI-05 | UI | AC-08 | Terminal Action | All fields read-only; no save control | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
@@ -117,7 +119,7 @@ Status legend (the Final column):
 | UI-10 | UI | AC-18, AC-13 | Gate block and success | Block message shows the open Action count; success refreshes the summary status | `client/tests/lab-04/TicketWorkflow.test.tsx` | Issue 4 | Pending |
 | UI-11 | UI | FR-14, FR-18 | Staff Dashboard states | Six cards and three lists; loading, empty, forbidden, and failure states | `client/tests/lab-04/StaffDashboard.test.tsx` | Issue 5 | Pending |
 | UI-12 | UI | AC-21, AC-24, FR-15 | Staff Dashboard links | Cards are links with accessible names and correct targets; user-count card only for Administrator | `client/tests/lab-04/StaffDashboard.test.tsx` | Issue 5 | Pending |
-| UI-13 | UI | AC-23, FR-13 | Requester Dashboard | Four cards and three lists; zero state when the user has no Tickets | `client/tests/lab-04/RequesterDashboard.test.tsx` | Issue 5 | Pending |
+| UI-13 | UI | AC-23, FR-13 | Requester Dashboard | Four cards and three lists; zero state when the user has no Tickets; Needs-your-attention rows show "Waiting since" | `client/tests/lab-04/RequesterDashboard.test.tsx` | Issue 5 | Pending |
 | UI-14 | UI | AC-21 | Requester Dashboard drill-down | Links carry the comma-separated status filter | `client/tests/lab-04/RequesterDashboard.test.tsx` | Issue 5 | Pending |
 | UI-15 | UI | FR-16 | Role navigation | Dashboard entry per role, active-page indication, and correct landing page after login | `client/tests/lab-04/Navigation.test.tsx` | Issue 5 | Pending |
 | UI-16 | UI | FR-18 | Wrong role reaches a dashboard route | Redirect with a notification, never raw JSON | `client/tests/lab-04/Navigation.test.tsx` | Issue 5 | Pending |
@@ -185,6 +187,7 @@ Status legend (the Final column):
 | AC-35 | Rollback restores all Lab 1-3 data and the migration can be re-applied | MIG-03, MIG-08 |
 | AC-36 | Exact inclusive 30-day UTC window, independent of time zone | UNIT-05, API-37, API-41, UI-19 |
 | AC-37 | Action status changes only through the status endpoint and dedicated buttons | API-40, UI-18 |
+| AC-38 | Needs your attention is ordered by time waiting, not last edit | API-43, API-44, UI-13 |
 
 ### Business-rule coverage
 
@@ -199,7 +202,7 @@ Every business rule has at least one test.
 | BR-05 | UNIT-03, API-15 |
 | BR-06 | API-08, API-12 |
 | BR-07 | UNIT-02 |
-| BR-08 | UNIT-02, API-10 |
+| BR-08 | UNIT-02, API-10, UI-02 |
 | BR-09 | UNIT-02, API-06 |
 | BR-10 | UNIT-02 |
 | BR-11 | UNIT-01, API-09, API-17 |
@@ -220,7 +223,7 @@ Every business rule has at least one test.
 | BR-26 | API-30, API-32, API-35 |
 | BR-27 | UNIT-05, API-32 |
 | BR-28 | UNIT-05, API-37, API-41, UI-19 |
-| BR-29 | API-30, API-33 |
+| BR-29 | API-30, API-33, API-44 |
 | BR-30 | API-28, API-34 |
 | BR-31 | API-35, E2E-05 |
 | BR-32 | API-29, UI-13, E2E-05 |
@@ -230,6 +233,7 @@ Every business rule has at least one test.
 | BR-36 | E2E-06 |
 | BR-37 | API-38 |
 | BR-38 | MIG-04 |
+| BR-39 | API-43, API-44, MIG-02 |
 
 ## 4. Responsive, Visual, and Accessibility Checklist
 
@@ -313,14 +317,18 @@ multi-browser concurrency test is replaced by two parallel API sessions.]
 
 Checked every Acceptance Criterion, business rule, and specified behavior against the plan.
 
-- AC-01 to AC-33: each maps to at least one test row that exists in section 2 (verified by listing
+- AC-01 to AC-38: each maps to at least one test row that exists in section 2 (verified by listing
   every referenced Test ID against the table).
 - Gaps found and closed by adding rows: AC-34 to AC-37 and their tests (MIG-07, MIG-08, API-40,
   API-41, UI-18, UI-19); check-order behavior (API-42); the "Add Action replaced by a note" state
   (UI-20); the creation-status rule (extended API-17); ignored server-generated fields (extended
   API-08); `clientRequestId` reuse across Tickets (extended API-13); the cascade count (extended
   API-21); and the dashboard window fields (extended API-30 and API-37).
-- All 38 business rules map to tests (see Business-rule coverage in section 3).
+- All 39 business rules map to tests (see Business-rule coverage in section 3).
 - Test file paths are the planned locations. The four server files, four client files, and three
   end-to-end files required by the labsheet are all used; the additional files are listed in the
   table and will be created in the Issue named in "Planned Issue".
+- Second review round: (1) creating an Action as COMPLETED requires a Result, now stated in BR-08
+  and the API spec and tested by the extended API-10, UNIT-02, and UI-02; (2) "Needs your attention"
+  ordering now uses a new `statusChangedAt` clock (BR-39, AC-38) instead of `updatedAt`, with tests
+  API-43 and API-44 and a backfill check in MIG-02.
