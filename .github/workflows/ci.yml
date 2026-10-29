@@ -159,60 +159,23 @@ jobs:
 
       - name: Wait for backend and frontend (30 s limit)
         run: |
-          DEADLINE=$(( SECONDS + 30 ))
-          BACKEND_READY=0
-          FRONTEND_READY=0
-
-          while [ $(( SECONDS )) -lt $DEADLINE ]; do
-            if [ $BACKEND_READY -eq 0 ]; then
-              if ! kill -0 $(cat ci-logs/backend.pid) 2>/dev/null; then
-                echo "::error::Backend process died before becoming ready"
-                echo "::group::ci-logs/backend.log"
-                cat ci-logs/backend.log
+          STATUS=0
+          timeout 30 bash .github/scripts/wait-for-servers.sh || STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            if [ "$STATUS" -eq 124 ]; then
+              echo "::error::Servers were not ready within 30 seconds"
+            else
+              echo "::error::A server process exited before becoming ready"
+            fi
+            for name in backend frontend; do
+              if [ ! -f "ci-logs/$name.ready" ]; then
+                echo "::group::ci-logs/$name.log ($name is not ready)"
+                cat "ci-logs/$name.log"
                 echo "::endgroup::"
-                exit 1
               fi
-              if curl -sf --max-time 2 http://localhost:3000/api/health > /dev/null; then
-                echo "Backend ready after $(( SECONDS ))s"
-                BACKEND_READY=1
-              fi
-            fi
-
-            if [ $FRONTEND_READY -eq 0 ]; then
-              if ! kill -0 $(cat ci-logs/frontend.pid) 2>/dev/null; then
-                echo "::error::Frontend process died before becoming ready"
-                echo "::group::ci-logs/frontend.log"
-                cat ci-logs/frontend.log
-                echo "::endgroup::"
-                exit 1
-              fi
-              if curl -sf --max-time 2 http://localhost:5173 > /dev/null; then
-                echo "Frontend ready after $(( SECONDS ))s"
-                FRONTEND_READY=1
-              fi
-            fi
-
-            if [ $BACKEND_READY -eq 1 ] && [ $FRONTEND_READY -eq 1 ]; then
-              echo "Both servers ready"
-              exit 0
-            fi
-
-            sleep 1
-          done
-
-          if [ $BACKEND_READY -eq 0 ]; then
-            echo "::error::Backend did not become ready within 30 seconds"
-            echo "::group::ci-logs/backend.log"
-            cat ci-logs/backend.log
-            echo "::endgroup::"
+            done
+            exit 1
           fi
-          if [ $FRONTEND_READY -eq 0 ]; then
-            echo "::error::Frontend did not become ready within 30 seconds"
-            echo "::group::ci-logs/frontend.log"
-            cat ci-logs/frontend.log
-            echo "::endgroup::"
-          fi
-          exit 1
 
       - name: Run E2E tests
         env:
@@ -228,6 +191,7 @@ jobs:
             ci-logs/
             playwright-report/
             test-results/
+            artifacts/
           if-no-files-found: warn
           retention-days: 14
 

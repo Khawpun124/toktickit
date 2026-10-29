@@ -1,0 +1,5 @@
+# Set default line endings for text files
+* text=auto
+
+# Shell scripts must always use LF — CRLF will break bash on Linux/macOS CI runners
+*.sh text eol=lf
