@@ -147,60 +147,87 @@ jobs:
           DATABASE_URL: postgresql://toktickit:toktickit_ci_password@localhost:5432/toktickit_db
         run: npm run db:reset
 
-      - name: Run Playwright E2E tests
+      - name: Start backend and frontend
         env:
           DATABASE_URL: postgresql://toktickit:toktickit_ci_password@localhost:5432/toktickit_db
         run: |
-          # Start backend separately so we can capture its stdout/stderr
-          npm run dev --prefix server > /tmp/backend.log 2>&1 &
-          BACKEND_PID=$!
-          echo "Backend PID: $BACKEND_PID" >> /tmp/backend.log
+          mkdir -p ci-logs
+          nohup npm run dev --prefix server > ci-logs/backend.log 2>&1 &
+          echo $! > ci-logs/backend.pid
+          nohup npm run dev --prefix client > ci-logs/frontend.log 2>&1 &
+          echo $! > ci-logs/frontend.pid
 
-          # Start frontend separately
-          npm run dev --prefix client > /tmp/frontend.log 2>&1 &
-          FRONTEND_PID=$!
+      - name: Wait for backend and frontend (30 s limit)
+        run: |
+          DEADLINE=$(( SECONDS + 30 ))
+          BACKEND_READY=0
+          FRONTEND_READY=0
 
-          # Wait for backend health endpoint (up to 30s)
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:3000/api/health > /dev/null; then
-              echo "Backend ready after ${i}s"
-              break
+          while [ $(( SECONDS )) -lt $DEADLINE ]; do
+            if [ $BACKEND_READY -eq 0 ]; then
+              if ! kill -0 $(cat ci-logs/backend.pid) 2>/dev/null; then
+                echo "::error::Backend process died before becoming ready"
+                echo "::group::ci-logs/backend.log"
+                cat ci-logs/backend.log
+                echo "::endgroup::"
+                exit 1
+              fi
+              if curl -sf --max-time 2 http://localhost:3000/api/health > /dev/null; then
+                echo "Backend ready after $(( SECONDS ))s"
+                BACKEND_READY=1
+              fi
             fi
+
+            if [ $FRONTEND_READY -eq 0 ]; then
+              if ! kill -0 $(cat ci-logs/frontend.pid) 2>/dev/null; then
+                echo "::error::Frontend process died before becoming ready"
+                echo "::group::ci-logs/frontend.log"
+                cat ci-logs/frontend.log
+                echo "::endgroup::"
+                exit 1
+              fi
+              if curl -sf --max-time 2 http://localhost:5173 > /dev/null; then
+                echo "Frontend ready after $(( SECONDS ))s"
+                FRONTEND_READY=1
+              fi
+            fi
+
+            if [ $BACKEND_READY -eq 1 ] && [ $FRONTEND_READY -eq 1 ]; then
+              echo "Both servers ready"
+              exit 0
+            fi
+
             sleep 1
           done
 
-          # Wait for frontend (up to 30s)
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:5173 > /dev/null; then
-              echo "Frontend ready after ${i}s"
-              break
-            fi
-            sleep 1
-          done
+          if [ $BACKEND_READY -eq 0 ]; then
+            echo "::error::Backend did not become ready within 30 seconds"
+            echo "::group::ci-logs/backend.log"
+            cat ci-logs/backend.log
+            echo "::endgroup::"
+          fi
+          if [ $FRONTEND_READY -eq 0 ]; then
+            echo "::error::Frontend did not become ready within 30 seconds"
+            echo "::group::ci-logs/frontend.log"
+            cat ci-logs/frontend.log
+            echo "::endgroup::"
+          fi
+          exit 1
 
-          # Run Playwright — webServer.reuseExistingServer=true so it reuses the above processes
-          npm run test:e2e
-          E2E_EXIT=$?
+      - name: Run E2E tests
+        env:
+          DATABASE_URL: postgresql://toktickit:toktickit_ci_password@localhost:5432/toktickit_db
+        run: npm run test:e2e
 
-          # Capture backend/frontend logs as artifacts
-          cp /tmp/backend.log backend.log || true
-          cp /tmp/frontend.log frontend.log || true
-
-          # Stop background servers
-          kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
-
-          exit $E2E_EXIT
-
-      - name: Upload Playwright test results and logs
+      - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results-${{ github.run_number }}-${{ github.run_attempt }}-matrix${{ matrix.attempt }} # TEMPORARY - REMOVE BEFORE MERGE
           path: |
-            test-results/
+            ci-logs/
             playwright-report/
-            artifacts/
-            backend.log
-            frontend.log
+            test-results/
+          if-no-files-found: warn
           retention-days: 14
 
