@@ -90,14 +90,6 @@ jobs:
     name: E2E Tests
     needs: [server-tests, client-tests]
     runs-on: ubuntu-latest
-    # TEMPORARY - REMOVE BEFORE MERGE
-    strategy:
-      # TEMPORARY - REMOVE BEFORE MERGE
-      fail-fast: false
-      # TEMPORARY - REMOVE BEFORE MERGE
-      matrix:
-        # TEMPORARY - REMOVE BEFORE MERGE
-        attempt: [1, 2, 3, 4, 5]
 
     services:
       postgres:
@@ -186,7 +178,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results-${{ github.run_number }}-${{ github.run_attempt }}-matrix${{ matrix.attempt }} # TEMPORARY - REMOVE BEFORE MERGE
+          name: playwright-results-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             ci-logs/
             playwright-report/
