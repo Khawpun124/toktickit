@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, lab1-staging, lab2-staging, "feature/**"]
+    branches: [main, lab1-staging, lab2-staging, lab3-staging, lab4-staging, "feature/**", "fix/**"]
   pull_request:
-    branches: [main, lab1-staging, lab2-staging]
+    branches: [main, lab1-staging, lab2-staging, lab3-staging, lab4-staging]
 
 jobs:
   server-tests:
@@ -139,18 +139,51 @@ jobs:
           DATABASE_URL: postgresql://toktickit:toktickit_ci_password@localhost:5432/toktickit_db
         run: npm run db:reset
 
-      - name: Run Playwright E2E tests
+      - name: Start backend and frontend
+        env:
+          DATABASE_URL: postgresql://toktickit:toktickit_ci_password@localhost:5432/toktickit_db
+        run: |
+          mkdir -p ci-logs
+          nohup npm run dev --prefix server > ci-logs/backend.log 2>&1 &
+          echo $! > ci-logs/backend.pid
+          nohup npm run dev --prefix client > ci-logs/frontend.log 2>&1 &
+          echo $! > ci-logs/frontend.pid
+
+      - name: Wait for backend and frontend (30 s limit)
+        run: |
+          STATUS=0
+          timeout 30 bash .github/scripts/wait-for-servers.sh || STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            if [ "$STATUS" -eq 124 ]; then
+              echo "::error::Servers were not ready within 30 seconds"
+            else
+              echo "::error::A server process exited before becoming ready"
+            fi
+            for name in backend frontend; do
+              if [ ! -f "ci-logs/$name.ready" ]; then
+                echo "::group::ci-logs/$name.log ($name is not ready)"
+                cat "ci-logs/$name.log"
+                echo "::endgroup::"
+              fi
+            done
+            exit 1
+          fi
+
+      - name: Run E2E tests
         env:
           DATABASE_URL: postgresql://toktickit:toktickit_ci_password@localhost:5432/toktickit_db
         run: npm run test:e2e
 
-      - name: Upload Playwright test results on failure
-        if: failure()
+      - name: Upload test artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
+          name: playwright-results-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
+            ci-logs/
+            playwright-report/
             test-results/
             artifacts/
-          retention-days: 7
+          if-no-files-found: warn
+          retention-days: 14
 
