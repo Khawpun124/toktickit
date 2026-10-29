@@ -14,8 +14,8 @@ Actions Taken, workflow feedback, accessibility, and final polish.
   Ticket Detail screens.
 - The backend is the authority. The UI guides (hides, disables, explains) but every rule is
   also enforced server-side, and the UI must handle the server saying no.
-- Do not show: "from yesterday" deltas or trend arrows (dashboards have no calendar-day
-  metrics, BR-28), charts, export controls, or automatic polling.
+- Do not show: "from yesterday" deltas or trend arrows (dashboards have no calendar-day metrics, BR-28), charts, export controls, or automatic polling.
+- Time: every timestamp the UI shows ("Waiting since", last updated, action date/time, the "Updated" time on a dashboard) is the UTC value from the API formatted in the browser's time zone. These values are display only. The UI never uses them to compute durations, windows, or counts, and never re-sorts or re-filters API results (BR-28, BR-39).
 
 ## 2. New and Extended Tokens
 
@@ -59,7 +59,7 @@ Ticket status, Requested Priority, IT Priority, and role badges are unchanged fr
 ## 4. IT Staff Dashboard (`/staff/dashboard`)
 
 Header row: greeting "Welcome back, <first name>" with a one-line subtitle on the left;
-on the right a Refresh button (secondary) and small "Updated hh:mm" text. Refresh shows a
+on the right a Refresh button (secondary) and small "Updated hh:mm" text (the API's `generatedAt` shown in the browser's time zone). Refresh shows a
 busy state and re-fetches; it does not reload the page.
 
 Metric cards (all are links; each is one focusable element with an accessible name such
@@ -82,7 +82,7 @@ filtered Queue exists):
 - My recent Tickets: ticket number, summary, status badge, last updated.
 - My open Actions: description, ticket number, Action status badge, action date/time.
   Opens the Ticket Detail of that Ticket.
-- Urgent Tickets: ticket number, summary, IT Priority badge, status badge, last updated. Ordered least recently updated first, so urgent Tickets that nobody has touched appear first.
+- Urgent Tickets: only Tickets that are active (status New, Open, In Progress, Waiting for Requester, or Reopened; never Resolved, Closed, or Cancelled) and have IT Priority High. This is the same set as the "High IT Priority" card. Each row shows the ticket number, summary, IT Priority badge (always High), status badge, and last updated. Ordered least recently updated first (ties by ticket id ascending), so urgent Tickets that nobody has touched appear first. The API applies the condition and the order; the UI renders the rows exactly as returned and never re-filters or re-sorts them. When no Ticket matches, the list shows "No urgent tickets."
 
 Quick actions panel: Open My Queue, Search Tickets (opens the Queue with the search box
 focused), Create Ticket.
@@ -112,7 +112,7 @@ Metric cards (links, same accessible-name pattern):
 | Closed | CLOSED | My Tickets filtered to Closed |
 
 Lists (rows open Requester Ticket Detail):
-- Needs your attention: Tickets waiting for the Requester, longest waiting first. Waiting time is counted from when the Ticket entered Waiting for Requester (`waitingSince` in the API), not from its last edit, so a later comment or edit never moves a row. Each row shows the ticket number, the summary, and "Waiting since <date and time>". This list has a distinct callout style when it is not empty.
+- Needs your attention: Tickets waiting for the Requester, longest waiting first. Waiting time is counted from when the Ticket entered Waiting for Requester (`waitingSince` in the API), not from its last edit, so a later comment or edit never moves a row. Each row shows the ticket number, the summary, and "Waiting since <date and time>". The date and time are the UTC `waitingSince` value formatted in the browser's time zone. This is display only: the UI never uses it to calculate a waiting duration, to sort, or to filter. The set of rows and their order come from the API (BR-39), so changing the browser time zone changes only how the time reads, never which rows appear or in what order. This list has a distinct callout style when it is not empty.
 - Recently updated: ticket number, summary, status badge, last updated.
 - Recently resolved: Resolved or Closed in the last 30 days.
 
@@ -304,6 +304,7 @@ text never replaced by truncation of the only copy of important data.
 - [ ] Validation and conflict messages are in the right place and understandable
 - [ ] Focus is visible everywhere; the dialog traps and restores focus
 - [ ] No horizontal scrolling, overlap, or hidden controls at any viewport
+- [ ] Urgent Tickets shows only active High-priority Tickets; "Waiting since" and other times read in the browser's time zone and never change the rows or their order
 - [ ] No leftover or inconsistent UI from earlier labs
 
 ## 14. Screenshot Paths

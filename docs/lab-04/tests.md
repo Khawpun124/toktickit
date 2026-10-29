@@ -80,7 +80,7 @@ Status legend (the Final column):
 | API-30 | API | BR-26, BR-29 | Each Requester metric and list against its database query | Counts exact; lists capped at 5 and correctly ordered; response carries `generatedAt` and `recentlyResolvedSince` | `server/tests/lab-04/requester-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-31 | API | AC-22 | Requester calls staff dashboard; Staff and Administrator call Requester dashboard | 403 in every case | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-32 | API | AC-20, BR-26 | Each staff metric against its database query | All six counts exact | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
-| API-33 | API | BR-29 | Staff lists: My recent Tickets, My open Actions, Urgent Tickets | Correct filter, ordering, and cap; Urgent Tickets are least recently updated first, ties by `id` ascending | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
+| API-33 | API | BR-29 | Staff lists: My recent Tickets, My open Actions, Urgent Tickets | Correct filter, ordering, and cap; Urgent Tickets contain only active Tickets with IT Priority HIGH (RESOLVED, CLOSED, CANCELLED, and non-HIGH Tickets are excluded) and are least recently updated first, ties by `id` ascending | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-34 | API | AC-24, BR-30 | User counts in staff dashboard | Present for Administrator; absent for IT Staff | `server/tests/lab-04/staff-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-35 | API | AC-21, BR-31 | Follow each card's drill-down query on the list endpoints | List `totalItems` equals the card number | `server/tests/lab-04/staff-dashboard.api.test.ts` and `requester-dashboard.api.test.ts` | Issue 5 | Pending |
 | API-36 | API | Additive change | `currentStatus` comma list on both list endpoints | Valid list works; any invalid value returns 400 | `server/tests/lab-04/status-list-filter.api.test.ts` | Issue 5 | Pending |
@@ -119,14 +119,15 @@ Status legend (the Final column):
 | UI-10 | UI | AC-18, AC-13 | Gate block and success | Block message shows the open Action count; success refreshes the summary status | `client/tests/lab-04/TicketWorkflow.test.tsx` | Issue 4 | Pending |
 | UI-11 | UI | FR-14, FR-18 | Staff Dashboard states | Six cards and three lists; loading, empty, forbidden, and failure states | `client/tests/lab-04/StaffDashboard.test.tsx` | Issue 5 | Pending |
 | UI-12 | UI | AC-21, AC-24, FR-15 | Staff Dashboard links | Cards are links with accessible names and correct targets; user-count card only for Administrator | `client/tests/lab-04/StaffDashboard.test.tsx` | Issue 5 | Pending |
-| UI-13 | UI | AC-23, FR-13 | Requester Dashboard | Four cards and three lists; zero state when the user has no Tickets; Needs-your-attention rows show "Waiting since" | `client/tests/lab-04/RequesterDashboard.test.tsx` | Issue 5 | Pending |
+| UI-13 | UI | AC-23, FR-13 | Requester Dashboard | Four cards and three lists; zero state when the user has no Tickets; Needs-your-attention rows show "Waiting since" formatted in the browser's time zone | `client/tests/lab-04/RequesterDashboard.test.tsx` | Issue 5 | Pending |
 | UI-14 | UI | AC-21 | Requester Dashboard drill-down | Links carry the comma-separated status filter | `client/tests/lab-04/RequesterDashboard.test.tsx` | Issue 5 | Pending |
 | UI-15 | UI | FR-16 | Role navigation | Dashboard entry per role, active-page indication, and correct landing page after login | `client/tests/lab-04/Navigation.test.tsx` | Issue 5 | Pending |
 | UI-16 | UI | FR-18 | Wrong role reaches a dashboard route | Redirect with a notification, never raw JSON | `client/tests/lab-04/Navigation.test.tsx` | Issue 5 | Pending |
 | UI-17 | UI | FR-14 | Refresh control | Re-fetches and updates the numbers | `client/tests/lab-04/StaffDashboard.test.tsx` | Issue 5 | Pending |
 | UI-18 | UI | AC-37, FR-03 | Status buttons in the Action dialog: Start, Mark completed, Cancel action | Buttons follow the Action matrix; completing needs a Result in the step panel; cancelling asks for a reason and a confirmation; buttons are disabled while the form has unsaved edits; Save never changes the status | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
-| UI-19 | UI | AC-36, BR-28 | Render the same dashboard payload under different browser time zones | Displayed times change; counts, lists, and order do not | `client/tests/lab-04/StaffDashboard.test.tsx` and `client/tests/lab-04/RequesterDashboard.test.tsx` | Issue 5 | Pending |
+| UI-19 | UI | AC-36, BR-28 | Render the same dashboard payload under different browser time zones | Displayed times ("Waiting since", last updated, "Updated") change with the browser time zone; counts, rows, and order do not; the rendered order equals the API order, so the UI does not sort or filter by these times | `client/tests/lab-04/StaffDashboard.test.tsx` and `client/tests/lab-04/RequesterDashboard.test.tsx` | Issue 5 | Pending |
 | UI-20 | UI | BR-13, FR-17 | A Ticket that no longer accepts actions | The Add Action button is replaced by the "Reopen the Ticket" note; a 409 from the server disables Save with an explanation | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
+| UI-21 | UI | AC-20, BR-27, BR-29 | Urgent Tickets list on the Staff Dashboard | Rows are exactly the items in the API payload, in API order; every row shows an IT Priority High badge and an active status badge (text); an empty payload shows "No urgent tickets."; the UI does not filter or re-sort the rows itself | `client/tests/lab-04/StaffDashboard.test.tsx` | Issue 5 | Pending |
 | STYLE-01 | UI Style | Section 7 UI rules | Metric card styling | Label, value, and link use the Zen Green tokens consistently | `client/tests/lab-04/DashboardStyle.test.tsx` | Issue 5 | Pending |
 | STYLE-02 | UI Style | BR-35 | Status and priority badges | Always show text, never color alone | `client/tests/lab-04/DashboardStyle.test.tsx` | Issue 5 | Pending |
 | STYLE-03 | UI Style | Lab 2 and 3 form rules | Validation placement and required markers in the Action form | Message directly under the field; asterisk plus message | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pending |
@@ -142,7 +143,7 @@ Status legend (the Final column):
 | E2E-02 | E2E | AC-05, AC-11, AC-28 | Follow-up validation; two staff edit the same Action | Second save shows the conflict message and keeps the typed data | `e2e/lab-04/actions-taken-flow.spec.ts` | Issue 7 | Pending |
 | E2E-03 | E2E | AC-13, AC-14, AC-19 | Resolve blocked by an unfinished Action, then complete it and resolve; direct API attempt | Blocked with the open count; allowed after completion; API bypass gets 409 | `e2e/lab-04/ticket-resolution.spec.ts` | Issue 7 | Pending |
 | E2E-04 | E2E | AC-16 | Cancel a Ticket with unfinished Actions | Actions show CANCELLED with the automatic Result | `e2e/lab-04/ticket-resolution.spec.ts` | Issue 7 | Pending |
-| E2E-05 | E2E | AC-02, AC-20, AC-21, AC-23 | Both dashboards: counts, drill-down, empty Requester | Counts match the Queue and My Tickets lists they open | `e2e/lab-04/dashboards.spec.ts` | Issue 7 | Pending |
+| E2E-05 | E2E | AC-02, AC-20, AC-21, AC-23 | Both dashboards: counts, drill-down, empty Requester | Counts match the Queue and My Tickets lists they open; the Urgent Tickets list shows the seeded active High-priority Tickets and not a seeded Resolved High-priority Ticket or a seeded active Medium-priority one | `e2e/lab-04/dashboards.spec.ts` | Issue 7 | Pending |
 | E2E-06 | E2E | AC-33, BR-36 | Console and link sweep through every role's primary flow | Zero console errors; no broken links | `e2e/lab-04/regression-sweep.spec.ts` | Issue 7 | Pending |
 | E2E-07 | E2E | AC-26 | Representative Lab 1-3 flow: login with password change, create Ticket with attachment, staff claim, Internal Note hidden from the Requester, Administrator creates a user | All steps behave as in Lab 3 | `e2e/lab-04/regression-sweep.spec.ts` | Issue 7 | Pending |
 
@@ -169,7 +170,7 @@ Status legend (the Final column):
 | AC-17 | Create versus resolve race is consistent | API-22 |
 | AC-18 | Stale Ticket update 409; summary refreshes | UNIT-06, API-23, UI-10 |
 | AC-19 | Advisory flag changes nothing; reopen resets | API-24, E2E-03 |
-| AC-20 | Staff metrics match the database | UNIT-05, API-32, API-33, E2E-05 |
+| AC-20 | Staff metrics and lists match the database | UNIT-05, API-32, API-33, UI-21, E2E-05 |
 | AC-21 | Card count equals drill-down total | API-35, UI-12, UI-14, E2E-05 |
 | AC-22 | Wrong-role dashboard calls give 403 | API-31, UI-16 |
 | AC-23 | Zero-ticket Requester sees zeros and empty messages | API-29, UI-13, E2E-05 |
@@ -221,9 +222,9 @@ Every business rule has at least one test.
 | BR-24 | API-13, UI-03 |
 | BR-25 | SEC-01, SEC-02, API-02, API-03, API-31 |
 | BR-26 | API-30, API-32, API-35 |
-| BR-27 | UNIT-05, API-32 |
+| BR-27 | UNIT-05, API-32, API-33, UI-21 |
 | BR-28 | UNIT-05, API-37, API-41, UI-19 |
-| BR-29 | API-30, API-33, API-44 |
+| BR-29 | API-30, API-33, API-44, UI-21 |
 | BR-30 | API-28, API-34 |
 | BR-31 | API-35, E2E-05 |
 | BR-32 | API-29, UI-13, E2E-05 |
@@ -332,3 +333,7 @@ Checked every Acceptance Criterion, business rule, and specified behavior agains
   and the API spec and tested by the extended API-10, UNIT-02, and UI-02; (2) "Needs your attention"
   ordering now uses a new `statusChangedAt` clock (BR-39, AC-38) instead of `updatedAt`, with tests
   API-43 and API-44 and a backfill check in MIG-02.
+- Third review round: (1) the Urgent Tickets condition (active status and IT Priority High) is now
+  stated in the UI spec and asserted by API-33, the new UI-21, and E2E-05; (2) the browser time zone
+  rule for "Waiting since" and every other displayed time is stated in the UI spec, with the rule
+  that times are display only and never used to calculate, sort, or filter, asserted by UI-13 and UI-19.
