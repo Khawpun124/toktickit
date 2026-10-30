@@ -7,8 +7,10 @@
  * Usage (from repo root):  npm run db:backfill:lab4 --prefix server
  */
 import { getPrisma } from "../src/prisma.js";
+import { resolveTarget } from "./lib/lab4-db.js";
 
 async function main() {
+  resolveTarget("db:backfill:lab4");
   const prisma = getPrisma();
 
   console.log("[db:backfill:lab4] Running idempotent backfill ...\n");
