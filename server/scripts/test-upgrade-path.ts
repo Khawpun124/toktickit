@@ -20,6 +20,21 @@ const lab3MigrationFolders = [
   "20260917155038_restore_ticket_requester_fk",
 ];
 
+// Discover Lab 4 migration folder(s) dynamically so we do not hard-code the
+// timestamp. Any folder whose name ends with _add_actions_taken_and_workflow_fields
+// is considered a Lab 4 migration that must be hidden during the Lab 2→3 upgrade
+// simulation (otherwise "migrate deploy" at Step 3 would try to apply it against
+// an incomplete schema and fail). These folders are moved back in the finally block
+// but NOT restored at Step 5 — the Lab 3 upgrade test must not include Lab 4.
+function findLab4MigrationFolders(): string[] {
+  if (!fs.existsSync(migrationsDir)) return [];
+  return fs.readdirSync(migrationsDir).filter(
+    (name) =>
+      fs.statSync(path.join(migrationsDir, name)).isDirectory() &&
+      name.endsWith("_add_actions_taken_and_workflow_fields")
+  );
+}
+
 async function runUpgradePathTest() {
   console.log("==================================================");
   console.log(" Starting Upgrade Path Verification Test ");
@@ -34,17 +49,25 @@ async function runUpgradePathTest() {
     await prisma.$executeRawUnsafe(`CREATE SCHEMA public;`);
     console.log("  ✓ Database schema cleaned.\n");
 
-    // Step 2: Move Lab 3 migrations out temporarily
-    console.log("[Step 2/8] Isolating Lab 2 migrations...");
+    // Step 2: Move Lab 3 AND Lab 4 migrations out temporarily so that
+    // "migrate deploy" at Step 3 only sees the Lab 1-2 migrations.
+    // Lab 4 folders are NOT restored at Step 5 — they stay in tempDir for
+    // the duration of this test and are returned only in the finally block.
+    console.log("[Step 2/8] Isolating Lab 2 migrations (hiding Lab 3 + Lab 4)...");
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
-    for (const folder of lab3MigrationFolders) {
+    const lab4MigrationFolders = findLab4MigrationFolders();
+    const foldersToHide = [...lab3MigrationFolders, ...lab4MigrationFolders];
+    for (const folder of foldersToHide) {
       const src = path.join(migrationsDir, folder);
       const dest = path.join(tempDir, folder);
       if (fs.existsSync(src)) {
         fs.renameSync(src, dest);
       }
+    }
+    if (lab4MigrationFolders.length > 0) {
+      console.log(`  ✓ Lab 4 migration(s) also hidden: ${lab4MigrationFolders.join(", ")}`);
     }
     console.log("  ✓ Lab 3 migrations isolated.\n");
 
@@ -110,8 +133,11 @@ async function runUpgradePathTest() {
     console.log(`  ✓ Inserted 3 RequesterUsers and 4 Tickets.`);
     console.log(`  ✓ Captured pre-migration ticket mapping (${beforeMap.size} tickets recorded).\n`);
 
-    // Step 5: Restore Lab 3 migrations
-    console.log("[Step 5/8] Restoring Lab 3 migrations...");
+    // Step 5: Restore ONLY Lab 3 migrations. Lab 4 migrations stay in tempDir
+    // and will be returned to their proper place by the finally block.
+    // This keeps Step 6 ("migrate deploy") limited to Lab 1-3 migrations,
+    // which is exactly what MIG-06 tests.
+    console.log("[Step 5/8] Restoring Lab 3 migrations (Lab 4 stays hidden)...");
     for (const folder of lab3MigrationFolders) {
       const src = path.join(tempDir, folder);
       const dest = path.join(migrationsDir, folder);
@@ -119,9 +145,7 @@ async function runUpgradePathTest() {
         fs.renameSync(src, dest);
       }
     }
-    if (fs.existsSync(tempDir)) {
-      fs.rmdirSync(tempDir);
-    }
+    // Note: do NOT rmdirSync here — tempDir may still hold Lab 4 folder(s).
     console.log("  ✓ Lab 3 migrations restored.\n");
 
     // Step 6: Apply Lab 3 migrations (6-9) onto populated Lab 2 database
@@ -208,19 +232,26 @@ async function runUpgradePathTest() {
     console.error("\n❌ UPGRADE PATH TEST FAILED:", error);
     process.exitCode = 1;
   } finally {
-    // Always restore folders if leftover in tempDir
+    // Always restore ALL folders that were moved (Lab 3 + Lab 4) regardless
+    // of whether the script succeeded or failed.
     if (fs.existsSync(tempDir)) {
-      console.log("Restoring Lab 3 migration files in cleanup...");
-      for (const folder of lab3MigrationFolders) {
+      console.log("\n[Cleanup] Restoring all hidden migration folders...");
+      const allHidden = fs.readdirSync(tempDir);
+      for (const folder of allHidden) {
         const src = path.join(tempDir, folder);
         const dest = path.join(migrationsDir, folder);
-        if (fs.existsSync(src)) {
+        if (fs.existsSync(src) && !fs.existsSync(dest)) {
           fs.renameSync(src, dest);
+          console.log(`  ✓ Restored: ${folder}`);
         }
       }
-      fs.rmdirSync(tempDir);
+      try { fs.rmdirSync(tempDir); } catch { /* already empty or gone */ }
     }
     await prisma.$disconnect();
+    console.log(
+      "\n⚠️  WARNING: This script performed DROP SCHEMA on the dev database." +
+      "\n   Run \"npm run db:reset\" from the server/ directory to restore the dev database.\n"
+    );
   }
 }
 

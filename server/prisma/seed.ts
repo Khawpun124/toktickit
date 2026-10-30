@@ -46,23 +46,29 @@ async function main() {
   const defaultPasswordHash = await hashPassword(MIGRATED_USER_INITIAL_PASSWORD);
 
   const usersToSeed = [
-    // 5+ Active Requesters
-    // jennifer.anderson and emily.taylor are used exclusively by Lab 2 E2E tests
-    // sarah.connor (desktop), michael.brown (tablet), david.miller (mobile) are used exclusively by Lab 3 auth E2E test
+    // --- Requesters ---
+    // jennifer.anderson: Lab 2 E2E (requester-ticket-flow.spec.ts L102,161,210)
+    //                    Lab 3 E2E (staff-ticket-flow.spec.ts L98,246) — Requester whose ticket Staff manages
     { name: "Jennifer Anderson", email: "jennifer.anderson@example.com", role: Role.REQUESTER, isActive: true },
+    // emily.taylor: Lab 2 E2E (requester-ticket-flow.spec.ts L164,182) — second Requester
     { name: "Emily Taylor", email: "emily.taylor@example.com", role: Role.REQUESTER, isActive: true },
+    // michael.brown: Lab 3 E2E authentication.spec.ts — tablet project login flow
     { name: "Michael Brown", email: "michael.brown@example.com", role: Role.REQUESTER, isActive: true },
+    // sarah.connor: Lab 3 E2E authentication.spec.ts — desktop project login flow
     { name: "Sarah Connor", email: "sarah.connor@example.com", role: Role.REQUESTER, isActive: true },
+    // david.miller: Lab 3 E2E authentication.spec.ts — mobile project login flow
     { name: "David Miller", email: "david.miller@example.com", role: Role.REQUESTER, isActive: true },
-    // 1+ Inactive Requester
+    // 1+ Inactive Requester (not used in E2E; exists to satisfy Lab 1-2 requirements)
     { name: "Inactive Tester", email: "inactive.tester@example.com", role: Role.REQUESTER, isActive: false },
-    // 3+ Active IT Staff
+    // --- IT Staff ---
+    // alex.staff: Lab 3 E2E staff-ticket-flow.spec.ts L99,225,247 — primary IT Staff actor
     { name: "Alex Staff", email: "alex.staff@tiktockit.com", role: Role.IT_STAFF, isActive: true },
     { name: "Ben Staff", email: "ben.staff@tiktockit.com", role: Role.IT_STAFF, isActive: true },
     { name: "Clara Staff", email: "clara.staff@tiktockit.com", role: Role.IT_STAFF, isActive: true },
-    // 1+ Inactive IT Staff
+    // 1+ Inactive IT Staff (not used in E2E)
     { name: "Retired Staff", email: "retired.staff@tiktockit.com", role: Role.IT_STAFF, isActive: false },
-    // 1+ Active Administrator
+    // --- Administrator ---
+    // admin@tiktockit.com: Lab 3 E2E user-administration.spec.ts L69,110,114
     { name: "Admin User", email: "admin@tiktockit.com", role: Role.ADMINISTRATOR, isActive: true },
   ];
 
