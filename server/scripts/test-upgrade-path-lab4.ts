@@ -17,6 +17,9 @@
  *   migration.sql temporarily holds a broken copy. Cleanup restores both on every exit
  *   path (including Ctrl+C) from a .good_backup kept in os.tmpdir(), then checks that
  *   `git status` of prisma/migrations is unchanged. It never touches .env.
+ * - Work files (good backup, broken copy, test dump) live in a temp directory under
+ *   os.tmpdir(). It is deleted only when the test passes and cleanup succeeds; otherwise
+ *   its path is printed and it is kept for inspection.
  *
  * Usage (from server/):  npx tsx scripts/test-upgrade-path-lab4.ts
  */
@@ -146,6 +149,13 @@ function psqlTestDb(input: string | { file: string }): void {
   if (r.status !== 0) throw new Error(`psql on ${TEST_DB} failed: ${r.stderr.trim()}`);
 }
 
+// Runs one query on the test database and returns its unaligned, tuples-only output.
+function psqlTestDbQuery(sql: string): string {
+  const r = psql(TEST_DB, sql, ["-At"]);
+  if (r.status !== 0) throw new Error(`psql on ${TEST_DB} failed: ${r.stderr.trim()}`);
+  return r.stdout.trim();
+}
+
 function pgDumpTestDb(outFile: string): void {
   const fd = fs.openSync(outFile, "w");
   let r;
@@ -226,7 +236,7 @@ function rollback(expectedActionIds: number[]): void {
 // ─── Cleanup: runs on success, failure, and Ctrl+C ───────────────────────────
 
 let cleanedUp = false;
-function cleanup(): boolean {
+function cleanup(testPassed: boolean): boolean {
   if (cleanedUp) return true;
   cleanedUp = true;
   let ok = true;
@@ -276,9 +286,14 @@ function cleanup(): boolean {
     }
   }
 
-  // 4. Remove the work files (good backup, broken copy, test dump) unless a restore failed.
-  if (ok) fs.rmSync(workDir, { recursive: true, force: true });
-  else console.error(`  ✗ Work files kept for inspection: ${workDir}`);
+  // 4. Remove the work files (good backup, broken copy, test dump) only when the test passed
+  //    and every cleanup step above succeeded. Otherwise keep them for inspection.
+  if (testPassed && ok) {
+    fs.rmSync(workDir, { recursive: true, force: true });
+    console.log("  ✓ Work files removed");
+  } else {
+    console.error(`  Work files kept for inspection: ${workDir}`);
+  }
 
   // 5. Prove the repository's migrations are exactly as before.
   const gitAfter = migrationsGitStatus();
@@ -295,7 +310,7 @@ function cleanup(): boolean {
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     console.error(`\nReceived ${signal}`);
-    cleanup();
+    cleanup(false);
     process.exit(130);
   });
 }
@@ -448,10 +463,22 @@ async function runTest() {
   console.log();
 
   // ── Phase 11: Failure in the middle of the migration (MIG-07) ─────────────
+  // Proven by a manual run of this same broken copy on toktickit_upgrade_test (2026-10-30):
+  //   - psql -v ON_ERROR_STOP=1 stops at the inserted statement. Its first and only error is
+  //     42P01 relation "__lab4_forced_failure__" does not exist, and nothing from steps 1-2 remains.
+  //   - prisma migrate deploy exits 1 but prints only 25P02 "current transaction is aborted",
+  //     never the 42P01. Its _prisma_migrations row has finished_at NULL and logs NULL.
+  // Inferred, not observed: the migration's own BEGIN; leaves Prisma's connection inside the
+  // aborted transaction, so the next statement Prisma runs gets 25P02 and that error replaces
+  // the first one.
+  // So the root cause is checked with psql (step A), and the Prisma run (step B) is checked
+  // only by its exit code and its _prisma_migrations row, never by its error text or logs.
   console.log("[Phase 11] Failure in the middle of a copy of the migration (MIG-07) ...");
   rollback([]); // nothing to export; the export file is still written
   const realFolder = findLab4Folder();
   if (!realFolder) throw new Error("Lab 4 migration folder not found in prisma/migrations");
+  // The name is interpolated into a SQL literal below, so it must be plain.
+  if (!/^[0-9a-z_]+$/.test(realFolder)) throw new Error(`Unexpected migration folder name: ${realFolder}`);
   const realSqlPath = path.join(migrationsDir, realFolder, "migration.sql");
 
   const goodSql = fs.readFileSync(realSqlPath, "utf-8");
@@ -462,18 +489,36 @@ async function runTest() {
   fs.copyFileSync(realSqlPath, state.goodBackupPath);
   const brokenCopy = path.join(workDir, "migration.broken.sql");
   fs.writeFileSync(brokenCopy, goodSql.replace(FAILURE_ANCHOR, FAILURE_ANCHOR + FAILURE_SQL));
+  console.log(`  Broken copy written to ${brokenCopy} (deleted at cleanup only if the test passes);`);
+  console.log("  the failing statement sits after step 2, before the Ticket indexes and the backfill");
+
+  // Step A: the root cause, from psql running the same broken copy on the test database.
+  console.log(`\n  [A] psql -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -d ${TEST_DB} < migration.broken.sql`);
+  const direct = psql(TEST_DB, { file: brokenCopy }, ["-v", "VERBOSITY=verbose"]);
+  if (direct.stderr) process.stderr.write(indent(direct.stderr));
+  if (direct.status === 0) throw new Error("Expected psql to fail on the broken copy, but it succeeded");
+  if (!/ERROR:\s+42P01:\s+relation "__lab4_forced_failure__" does not exist/.test(direct.stderr)) {
+    throw new Error("psql failed, but its error is not 42P01 at the forced failure statement (see output above)");
+  }
+  console.log(`  ✓ psql exited ${direct.status}; first error is 42P01 at the forced failure statement`);
+  verify(["--expect-absent"], "MIG-07: no partial schema after the psql failure");
+
+  // Step B: the same copy through prisma migrate deploy, on the same database state.
+  console.log("\n  [B] prisma migrate deploy with the broken copy in place");
   state.brokenSqlPath = realSqlPath; // set before the copy so cleanup restores even a partial write
   fs.copyFileSync(brokenCopy, realSqlPath);
-  console.log(`  Broken copy (kept in ${workDir}) placed after step 2, before the backfill`);
-
   const failed = prismaCli(["migrate", "deploy"], true);
   if (failed.status === 0) throw new Error("Expected the broken migration to fail, but it succeeded");
-  if (!(failed.stdout + failed.stderr).includes("__lab4_forced_failure__")) {
-    throw new Error("The deploy failed, but not at the forced failure statement (see output above)");
-  }
-  console.log("  ✓ Deploy failed at the forced statement (output above)");
+  console.log(`  ✓ prisma migrate deploy exited ${failed.status} (its error text is printed above, not checked)`);
 
-  verify(["--expect-absent"], "MIG-07: no partial schema after the failure");
+  const unfinished = psqlTestDbQuery(
+    `SELECT count(*) FROM _prisma_migrations WHERE migration_name = '${realFolder}' AND finished_at IS NULL;`
+  );
+  if (unfinished !== "1") {
+    throw new Error(`Expected 1 _prisma_migrations row for ${realFolder} with finished_at NULL, found ${unfinished}`);
+  }
+  console.log("  ✓ _prisma_migrations row for the migration has finished_at NULL (Prisma recorded it as failed)");
+  verify(["--expect-absent"], "MIG-07: no partial schema after the Prisma failure");
 
   console.log(`\n  Resolving the failed migration: ${realFolder}`);
   prismaCli(["migrate", "resolve", "--rolled-back", realFolder]);
@@ -559,7 +604,7 @@ async function insertAction(performedById: number, ticketId: number): Promise<nu
   } catch (e) {
     console.error("\n❌ UPGRADE PATH TEST FAILED:", e instanceof Error ? e.message : e);
   }
-  const cleanedOk = cleanup();
+  const cleanedOk = cleanup(passed);
   if (passed && cleanedOk) {
     console.log("\n╔══════════════════════════════════════════════════════════════╗");
     console.log("║  ✓  Upgrade Path Verification SUCCESSFUL (all phases)        ║");
