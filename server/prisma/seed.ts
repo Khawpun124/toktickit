@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { hashPassword } from "../src/utils/password.js";
 import { runUserMigration } from "../src/utils/migrate-users.js";
 import { MIGRATED_USER_INITIAL_PASSWORD } from "../src/constants.js";
+import { seedLab4 } from "./seed-lab4.js";
 
 async function main() {
   const prisma = getPrisma();
@@ -92,6 +93,10 @@ async function main() {
       },
     });
   }
+
+  // Lab 4: dedicated users and Tickets with Actions Taken (see prisma/seed-lab4.ts).
+  // Runs after the Lab 1-3 users so those keep the lowest ids.
+  await seedLab4(prisma, defaultPasswordHash);
 
   console.log("Seeding categories, users, and related systems completed successfully.");
 }
