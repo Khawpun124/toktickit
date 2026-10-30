@@ -166,6 +166,120 @@ npx prisma db seed
   - **Administrator User**: `admin@tiktockit.com` / `ChangeMe123!`
   - *Note: All initial users created via migration or seed script are initialized with `mustChangePassword = true` and initial password `ChangeMe123!`.*
 
+#### Lab 4 Seed Data (Actions Taken and dashboards)
+The seed is idempotent: running `npx prisma db seed` again upserts the users and creates only the
+Tickets that do not exist yet. The Lab 4 data lives in `server/prisma/seed-lab4.ts`.
+
+- **Dedicated Lab 4 users** (not used by any Lab 2 or Lab 3 test). Every one starts with the
+  development password `ChangeMe123!` (the `INITIAL_MIGRATED_PASSWORD` default in
+  `server/src/constants.ts`, development only) and must change it at first login.
+
+  | End-to-end spec | Users |
+  |---|---|
+  | `e2e/lab-04/dashboards.spec.ts` | `l4-dash-staff@tiktockit.com` (IT Staff with work), `l4-dash-staff-idle@tiktockit.com` (IT Staff with none), `l4-dash-requester-many@example.com` (owns every seeded Ticket), `l4-dash-requester-empty@example.com` (no Tickets) |
+  | `e2e/lab-04/actions-taken-flow.spec.ts` | `l4-flow-staff-a@tiktockit.com`, `l4-flow-staff-b@tiktockit.com`, `l4-flow-requester@example.com` |
+  | `e2e/lab-04/ticket-resolution.spec.ts` | `l4-resolve-staff@tiktockit.com`, `l4-resolve-requester@example.com` |
+  | `e2e/lab-04/accessibility.spec.ts` | `l4-a11y-staff@tiktockit.com`, `l4-a11y-requester@example.com` |
+  | `e2e/lab-04/regression-sweep.spec.ts` | `l4-sweep-staff@tiktockit.com`, `l4-sweep-requester@example.com`, `l4-sweep-administrator@tiktockit.com` (Administrator) |
+
+- **Tickets `TKT-L4-0001` to `TKT-L4-0010`** with 13 Actions Taken: every Ticket status, every
+  priority, owned and unowned Tickets, Tickets with 0, 1, and several Actions (every Action status,
+  one with a follow-up), and three Waiting for Requester Tickets with different wait times.
+
+---
+
+## 🗄️ Lab 4 Database Upgrade and Rollback
+
+All commands run from the repository root unless they start with `cd server`. The Lab 4 migration
+(`20261030045000_add_actions_taken_and_workflow_fields`) is additive and runs in one transaction.
+Backups, snapshots, and Action exports are written to `server/backups/`, which is in `.gitignore`.
+
+| npm script | Purpose |
+|---|---|
+| `db:backup` | `pg_dump` through Docker into `backups/lab3-before-lab4-<UTC>.sql`. Stops if the container's `POSTGRES_DB` is not the database in `DATABASE_URL`. |
+| `db:snapshot` | Row counts and per-row checksums of every Lab 1-3 table into `backups/snapshot-<UTC>.json` |
+| `db:verify:lab4` | Post-migration and post-rollback checks; exits non-zero on any failure |
+| `db:backfill:lab4` | Runs only the idempotent backfill and prints how many rows changed |
+| `db:rollback:lab4` | Exports Actions Taken, then runs `prisma/rollback/lab4_down.sql` (needs `--confirm`) |
+
+### Upgrade an existing Lab 3 database
+1. Stop the backend and any test runs.
+2. `npm run db:backup --prefix server`
+3. `npm run db:snapshot --prefix server` and keep the printed file name.
+4. `cd server && npx prisma migrate deploy`
+5. `npm run db:verify:lab4 --prefix server -- --snapshot backups/snapshot-<UTC>.json --at-upgrade`
+6. Optionally run the seed, then start the application.
+
+### If the migration fails midway
+1. Confirm nothing partial remains:
+   `npm run db:verify:lab4 --prefix server -- --expect-absent`
+   (ActionTaken, the enum, and the new Ticket columns must not exist).
+2. **Find the real error with psql, not from Prisma's output.** Because `migration.sql` opens its
+   own transaction (`BEGIN; ... COMMIT;`), a failed `prisma migrate deploy` shows only
+   `ERROR: current transaction is aborted, commands ignored until end of transaction block`
+   (SQLSTATE 25P02), never the statement that failed, and the `logs` column of its
+   `_prisma_migrations` row stays empty. This was proven on a test database: the first error was
+   `42P01`, Prisma printed only 25P02. To see the first error, run the migration file against a
+   **copy** of the database (never the real one), for example a database restored from the backup
+   of step 2:
+
+   ```bash
+   docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -X -v VERBOSITY=verbose -U "$POSTGRES_USER" -d <copy_of_the_database>' < server/prisma/migrations/20261030045000_add_actions_taken_and_workflow_fields/migration.sql
+   ```
+
+   Run it from the repository root. Replace `<copy_of_the_database>` with the copy's name; never
+   use `"$POSTGRES_DB"` here, because that is the real database.
+
+   psql stops at the first failing statement and prints its SQLSTATE and message. The transaction
+   is rolled back, so the copy is left unchanged.
+3. Fix the cause, then mark the failed attempt as rolled back:
+   `cd server && npx prisma migrate resolve --rolled-back 20261030045000_add_actions_taken_and_workflow_fields`
+4. Run `npx prisma migrate deploy` again (the same file applies safely), then verify as in step 5
+   of the upgrade.
+5. If verification still shows a partial state (it should not), stop and restore the backup
+   (Rollback, option B).
+
+If the migration is already applied and only the backfill must be repeated, run
+`npm run db:backfill:lab4 --prefix server`. A second run changes 0 rows.
+
+### Rollback
+**Option A, reverse SQL** (removes only Lab 4 objects; keeps all Lab 1-3 data, including data
+written after the migration):
+1. Stop the application.
+2. `npm run db:rollback:lab4 --prefix server -- --confirm`
+   The script refuses to run without `--confirm`, prints the target database and how many Actions
+   Taken rows will be lost, and first writes them to `backups/actions-taken-export-<UTC>.json`.
+3. Verify: `npm run db:verify:lab4 --prefix server -- --snapshot backups/snapshot-<UTC>.json --after-rollback`
+
+**Option B, restore the backup** (the whole database returns to the moment of the backup and
+everything written after it is lost). Run from the repository root:
+
+```bash
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -X -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < server/backups/lab3-before-lab4-<UTC>.sql
+```
+
+- The single quotes keep the host shell from expanding `$POSTGRES_USER` and `$POSTGRES_DB`; the
+  shell inside the container expands them from the container's own environment, which is the
+  same database `db:backup` dumped.
+- `-v ON_ERROR_STOP=1` makes psql stop at the first error and exit non-zero instead of carrying on
+  with a partial restore; `-X` ignores any `~/.psqlrc` in the container.
+- The backup file is passed on stdin from the host, so its path is relative to the repository root
+  (`server/backups/`). The npm scripts above run inside `server/`, which is why their paths start
+  with `backups/`.
+
+Then run the same `--after-rollback` verification.
+
+### Automated proof of the whole procedure
+```bash
+cd server
+npx tsx scripts/test-upgrade-path-lab4.ts
+```
+It works only on a separate database, `toktickit_upgrade_test`, which it creates and drops. It
+never connects to the database in `DATABASE_URL`. While it runs it temporarily moves the Lab 4
+migration folder and, for the failure test, replaces its `migration.sql` with a broken copy; it
+restores both on every exit path. Do not run `prisma migrate` commands at the same time.
+
 ---
 
 ## 🔐 Authentication & Session Identity Flow
