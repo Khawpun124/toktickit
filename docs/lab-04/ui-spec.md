@@ -217,8 +217,9 @@ Status control (in Ticket Operations on Staff Ticket Detail):
 - Lists the current status and only the permitted next statuses from the matrix.
 - Changes use the Ticket's `version`, so a stale change returns a conflict message with a
   reload action instead of silently overwriting.
-- Confirmation dialog for the pairs flagged in the matrix (for example Open to Cancelled,
-  Closed to Reopened). It states "Change status from X to Y?". For Cancelled it also says
+- Confirmation for the pairs flagged in the matrix (for example Open to Cancelled,
+  Closed to Reopened), shown with the browser's native `window.confirm` (not a custom modal), so the
+  Lab 3 tests that spy on it stay valid and unchanged. It states "Change status from X to Y?". For Cancelled it also says
   that unfinished actions (with their count) will be cancelled automatically. Resolved to
   Closed and Resolved to Reopened show no dialog.
 - Resolution gate: when the Ticket has unfinished actions, the Resolved option is disabled
@@ -268,7 +269,8 @@ text never replaced by truncation of the only copy of important data.
 - Dialogs use `role="dialog"` with `aria-modal="true"` and an `aria-labelledby` title. On
   open, focus moves into the dialog; Tab and Shift+Tab stay inside; Escape closes it (after
   the unsaved-changes confirmation if needed); on close, focus returns to the control that
-  opened it. The confirmation dialog follows the same rules.
+  opened it. The unsaved-changes confirmation inside the Action dialog follows the same rules; the status-change
+  confirmation in Ticket Operations is the browser's native `window.confirm` and is exempt (BR-35 applies to dialogs this app builds).
 - Forms: every control has a visible label tied to it; errors use `aria-invalid` and
   `aria-describedby`; required fields carry the asterisk and `aria-required`.
 - Live regions: save and status confirmations use `role="status"`; errors that need
