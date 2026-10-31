@@ -53,8 +53,9 @@ Ticket status, Requested Priority, IT Priority, and role badges are unchanged fr
   - IT Staff: Dashboard, My Queue, Create Ticket
   - Administrator: Dashboard, My Queue, Admin / User Management
 - The label "Admin / User Management" is kept exactly so earlier tests and screens still find it.
-- On mobile the same entries sit inside the existing hamburger menu, with the active entry
-  marked.
+- On mobile there is no hamburger menu (the app never had one, and the Lab 2 and Lab 3 end-to-end tests click the header buttons
+  directly at 375 px). The same entries stay in the header as buttons that wrap onto a second line on narrow screens, with the
+  active entry marked. The labels, including "+ Create Ticket" and "My Tickets", and the button role are unchanged.
 
 ## 4. IT Staff Dashboard (`/staff/dashboard`)
 
