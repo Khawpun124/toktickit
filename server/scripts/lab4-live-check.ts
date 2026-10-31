@@ -14,8 +14,14 @@
  * Writes only through HTTP: Actions Taken, and Session rows from logging in. The database is read
  * (Prisma) only to count rows and confirm stored values. Exits non-zero if any check fails.
  *
+ * --mode status-changed-at (BR-39) creates a new Ticket and follows its statusChangedAt through
+ * steps that must not change it (comment, note, owner, IT priority, Action create/edit/status, a
+ * refused transition) and steps that must (each Ticket status transition). Every step is written
+ * through HTTP; the Ticket row is read with a read-only SELECT after each step.
+ *
  * Usage (from server/):
  *   npx tsx scripts/lab4-live-check.ts --base http://localhost:3400 [--state <file>] [--round <n>]
+ *   npx tsx scripts/lab4-live-check.ts --base http://localhost:3400 --mode status-changed-at [--round <n>]
  * Environment: REHEARSAL_PASSWORD, REHEARSAL_DIR (as for lab3-real-data). Secrets are never printed.
  */
 import fs from "fs";
@@ -33,9 +39,10 @@ const BASE = arg("base");
 const ROUND = arg("round") ?? "1";
 const STATE = arg("state") ?? (process.env.REHEARSAL_DIR ? path.join(process.env.REHEARSAL_DIR, "state.json") : undefined);
 const PASSWORD = process.env.REHEARSAL_PASSWORD;
+const MODE = arg("mode") ?? "live";
 
-if (!BASE || !STATE || !PASSWORD) {
-  console.error("Usage: --base <url> [--state <file>] [--round <n>]; needs REHEARSAL_PASSWORD");
+if (!BASE || !STATE || !PASSWORD || !["live", "status-changed-at"].includes(MODE)) {
+  console.error("Usage: --base <url> [--mode live|status-changed-at] [--state <file>] [--round <n>]; needs REHEARSAL_PASSWORD");
   process.exit(2);
 }
 
@@ -235,7 +242,110 @@ async function main() {
   console.log(`[live-check ${tag}] ALL PASSED`);
 }
 
-main().catch(err => {
+// ── status-changed-at (BR-39) ──────────────────────────────────────────────
+
+async function statusChangedAt() {
+  const prisma = getPrisma();
+  const state = JSON.parse(fs.readFileSync(STATE!, "utf8"));
+  const tag = `round ${ROUND}`;
+  const requester = await login(state.users.jennifer.email, PASSWORD!);
+  const staff = await login(state.users.alex.email, PASSWORD!);
+  const pause = () => new Promise(r => setTimeout(r, 25));
+
+  // Text casts show every stored digit and compare exactly.
+  type Row = { status: string; sca: string; updated: string; created: string; version: number };
+  let ticketId = 0;
+  const read = async () => (await prisma.$queryRaw<Row[]>`
+    SELECT "currentStatus"::text AS status, "statusChangedAt"::text AS sca, "updatedAt"::text AS updated,
+           "createdAt"::text AS created, version
+    FROM "Ticket" WHERE id = ${ticketId}`)[0];
+
+  const lines: string[] = [];
+  const row = (step: string, http: string, r: Row, scaChanged: string, updChanged: string, want: string, ok: boolean) => {
+    if (!ok) failures.push(`${step}: ${want}`);
+    lines.push(`  ${ok ? "PASS" : "FAIL"} | ${step.padEnd(40)} | ${http.padEnd(15)} | ${r.status.padEnd(21)} | ` +
+      `${r.sca} | ${r.updated} | ${scaChanged.padEnd(7)} | ${updChanged.padEnd(7)} | ${want}`);
+  };
+
+  const categories = (await call("GET", "/api/categories", "")).body;
+  const systems = (await call("GET", "/api/related-systems", "")).body;
+  const created = await call("POST", "/api/tickets", requester, {
+    categoryId: categories[0].id, relatedSystemId: systems[0].id, requestedPriority: "LOW",
+    summary: `statusChangedAt check ${tag}`, description: `Ticket for the BR-39 statusChangedAt check, ${tag}.`,
+  });
+  ticketId = created.body?.id;
+  if (created.status !== 201 || !ticketId) throw new Error(`create Ticket: ${created.status}`);
+  let prev = await read();
+  const utc = (t: string) => Date.parse(t.replace(" ", "T") + "Z");
+  const gap = Math.abs(utc(prev.sca) - utc(prev.created));
+  console.log(`[status-changed-at ${tag}] Ticket ${created.body.ticketNumber} (id ${ticketId}), Requester ${state.users.jennifer.email}, staff ${state.users.alex.email}`);
+  row("1 create Ticket", "201", prev, "-", "-", `statusChangedAt - createdAt = ${gap} ms (<= 1000)`, gap <= 1000);
+
+  async function unchanged(step: string, expected: number, send: () => Promise<Res>, updatedMustChange = false) {
+    await pause();
+    const res = await send();
+    const r = await read();
+    const scaSame = r.sca === prev.sca;
+    const updChanged = r.updated !== prev.updated;
+    const ok = res.status === expected && scaSame && r.status === prev.status && (!updatedMustChange || updChanged);
+    const code = res.body?.code ? ` ${res.body.code}` : "";
+    row(step, `${res.status}${code}`, r, scaSame ? "no" : "YES", updChanged ? "yes" : "no",
+      `HTTP ${expected}, statusChangedAt unchanged${updatedMustChange ? ", updatedAt changed" : ""}`, ok);
+    prev = r;
+    return res;
+  }
+
+  async function changed(step: string, newStatus: string, mustExceed?: string) {
+    await pause();
+    const res = await call("PATCH", `/api/staff/tickets/${ticketId}/status`, staff, { newStatus });
+    const r = await read();
+    const utc = (t: string) => Date.parse(t.replace(" ", "T") + "Z");
+    const later = utc(r.sca) > utc(prev.sca) && (!mustExceed || utc(r.sca) > utc(mustExceed));
+    const ok = res.status === 200 && r.status === newStatus && later;
+    row(step, String(res.status), r, later ? "yes" : "NO", r.updated !== prev.updated ? "yes" : "no",
+      `HTTP 200, later than before${mustExceed ? " and than the first WAITING" : ""}`, ok);
+    prev = r;
+    return r;
+  }
+
+  await unchanged("2a public comment (Requester)", 201,
+    () => call("POST", `/api/tickets/${ticketId}/comments`, requester, { content: "Comment that must not touch statusChangedAt." }));
+  await unchanged("2b internal note (IT Staff)", 201,
+    () => call("POST", `/api/tickets/${ticketId}/notes`, staff, { content: "Note that must not touch statusChangedAt." }));
+  await unchanged("2c owner -> ben", 200,
+    () => call("PATCH", `/api/staff/tickets/${ticketId}/owner`, staff, { ticketOwnerId: state.users.ben.id }), true);
+  await unchanged("2d IT priority -> HIGH", 200,
+    () => call("PATCH", `/api/staff/tickets/${ticketId}/priority`, staff, { itPriority: "HIGH" }), true);
+  const action = await unchanged("2e create Action", 201,
+    () => api.create(staff, ticketId, { description: `Action on the BR-39 Ticket, ${tag}` }));
+  await unchanged("2f edit Action (PATCH)", 200,
+    () => api.edit(staff, action.body.id, { expectedVersion: 1, description: `Action on the BR-39 Ticket, edited, ${tag}` }));
+  await unchanged("2g Action status -> IN_PROGRESS", 200,
+    () => api.status(staff, action.body.id, { expectedVersion: 2, status: "IN_PROGRESS" }));
+  await unchanged("2h refused transition NEW -> RESOLVED", 400,
+    () => call("PATCH", `/api/staff/tickets/${ticketId}/status`, staff, { newStatus: "RESOLVED" }));
+
+  await changed("3a NEW -> OPEN", "OPEN");
+  await changed("3b OPEN -> IN_PROGRESS", "IN_PROGRESS");
+  const firstWaiting = (await changed("3c IN_PROGRESS -> WAITING_FOR_REQUESTER", "WAITING_FOR_REQUESTER")).sca;
+  await changed("3d WAITING_FOR_REQUESTER -> IN_PROGRESS", "IN_PROGRESS");
+  await changed("3e IN_PROGRESS -> WAITING_FOR_REQUESTER", "WAITING_FOR_REQUESTER", firstWaiting);
+
+  console.log(`  ok   | ${"step".padEnd(40)} | ${"HTTP".padEnd(15)} | ${"currentStatus".padEnd(21)} | ` +
+    `${"statusChangedAt".padEnd(23)} | ${"updatedAt".padEnd(23)} | sca chg | upd chg | expected`);
+  for (const l of lines) console.log(l);
+  console.log(`  final version of the Ticket row: ${prev.version}`);
+
+  await prisma.$disconnect();
+  if (failures.length) {
+    console.log(`[status-changed-at ${tag}] FAILED ${failures.length}:`);
+    for (const f of failures) console.log(`  - ${f}`);
+    process.exit(1);
+  }
+  console.log(`[status-changed-at ${tag}] ALL PASSED (${lines.length} steps)`);
+}
+
+(MODE === "status-changed-at" ? statusChangedAt() : main()).catch(err => {
   console.error(`FAILED: ${err.message}`);
   process.exit(1);
 });
