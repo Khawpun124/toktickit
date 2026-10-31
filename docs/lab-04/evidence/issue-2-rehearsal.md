@@ -4,6 +4,16 @@ End-to-end rehearsal requested in the PR review: migration and rollback on a Lab
 holds data created through the Lab 3 application, plus live HTTP checks of stale updates, replay
 idempotency, and authorization.
 
+## Summary
+
+| Review item | Commands run | Main result | Evidence in this file |
+|---|---|---|---|
+| 1. Migration on a Lab 3 database with data | Lab 3 app: `lab3-real-data.ts --mode populate`; Lab 4: `db:backup`, `db:snapshot`, `prisma migrate deploy`, `db:verify:lab4 --at-upgrade`, `db:backfill:lab4`, MIG-02 SQL, `--mode capture` | Data from the Lab 3 HTTP API: 15 users, 28 Tickets in all 8 statuses, 12 comments, 9 notes, 7 attachments (2 removed). Verify 26 checks, 0 failures; backfill 0 rows; MIG-02 28/28 Tickets, 0 bad; 34 Lab 3 GET responses byte-identical before and after (sha256 `a4b486b8…c34e8512`) | Steps 1, 2 |
+| 2. Rollback and snapshot (Lab 1-3 unchanged after rollback and after restore) | `db:rollback:lab4 -- --confirm`; `db:verify:lab4 --after-rollback` with the step 2 snapshot; README Option B (DROP SCHEMA + restore of the step 2 backup) then the same verify; `--mode capture` on the Lab 3 app; `--mode smoke`; upgrade again with verify | Export rowCount 117 = 117 rows in the database, sorted ids identical. After Option A and after Option B: verify 24 checks, 0 failures, row counts and per-row checksums of all 8 Lab 1-3 tables match the snapshot, captures byte-identical (`a4b486b8…c34e8512`). Lab 3 write smoke 11/11 steps pass. Every later upgrade: verify 26 checks, 0 failures | Steps 4, 5 |
+| 3. statusChangedAt (BR-39) | `lab4-live-check.ts --mode status-changed-at`, 2 rounds | 14/14 steps pass in each round. It equals createdAt (0 ms) at creation and keeps every digit through 8 non-status steps (comment, note, owner, IT priority, Action create, edit and status, a refused transition 400), while updatedAt changes at owner and priority. It is later after each of 5 transitions, and re-entering WAITING is later than the first WAITING | Step 5b |
+| 4. Concurrency and authorization | `lab4-live-check.ts`, 5 rounds (3 in step 3, 1 in step 5, 1 in step 5b) | Every round: 20 parallel creates with one clientRequestId → 201 x1, 200 x19, one id, 1 row; 20 distinct → 201 x20, +20 rows; 20 parallel edits → 200 x1, 409 STALE_VERSION x19, version +1, stored text = winner; 10 parallel status changes → 200 x1, 409 x9. Authorization: 7 callers (no session, owner Requester, other Requester, IT Staff, Administrator, must change password, deactivated) x 4 endpoints = 28/28 match api-spec section 11; the deactivated user's old session gets 401 everywhere; refused writes changed 0 of 10 Actions; another Requester's Ticket and a missing Ticket give byte-identical 404s | Steps 3, 5, 5b |
+| 5. Test suites | `npx vitest run` in `server/` on the freshly reset database; `npx vitest run` in `client/` | Server: 25 files, 233/233 tests pass. Client: first run 10/11 files, 47/48 tests (one test in `tests/lab-01/App.test.tsx` failed; its error text was not kept); that file passes 4/4 alone and a second full run passes 11/11 files, 48/48 tests | Step 6, final run |
+
 - Database: `toktickit_db` in container `toktickit-db` (the dev database; its data was disposable).
   No other container or database was touched.
 - Lab 3 code: `origin/main` = `1396d2ebd4362c1bafd44b7d0a3d3e64879ee976`, checked out as a detached
@@ -377,7 +387,10 @@ The Action ids start at 1 again because the table was recreated by the final mig
 The Lab 4 app was stopped; ports 3000, 3300, 3400, and 5173 are free and no `tsx src/index.ts`
 process is left.
 
-## Step 6. Clean-up (finished 2026-10-31T04:03:20Z)
+## Step 6, first run. Clean-up (finished 2026-10-31T04:03:20Z)
+
+Step 5b (below) was requested after this run, so the database was rebuilt for it and step 6 is to
+be run again after step 5b.
 
 ```
 $ npm run db:reset --prefix server                  # target printed first: toktickit_db
@@ -415,7 +428,7 @@ Database schema is up to date!
 README was not changed: every README command ran as written. Nothing was committed or pushed.
 The backup, snapshots, and Actions export of this rehearsal stay in `server/backups/` (git-ignored).
 
-## Summary
+## Results by step (steps 1-6, first run)
 
 | Check | Result |
 |---|---|
@@ -431,4 +444,158 @@ The backup, snapshots, and Actions export of this rehearsal stay in `server/back
 | Rollback Option A: export rowCount 117, sorted ids = database; verify --after-rollback | pass |
 | Lab 3 write smoke test on the rolled-back database | pass |
 | Upgrade again; Option B restore; verify; capture; upgrade; verify; final live check | pass |
-| Clean-up: db:reset, no processes, worktree removed, vitest 25 files / 233 tests | pass |
+| Clean-up, first run: db:reset, no processes, worktree removed, vitest 25 files / 233 tests | pass (to be repeated after step 5b) |
+
+## Step 5b. statusChangedAt (BR-39) on the Lab 4 database with real data
+
+Step 6 had already reset the database, so the end-of-step-5 state was rebuilt first, with the step 2
+backup and the README commands (target printed first: `toktickit_db`):
+
+```
+$ docker compose exec -T postgres sh -c 'psql ... -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+DROP SCHEMA
+CREATE SCHEMA
+$ docker compose exec -T postgres sh -c 'psql ... -d "$POSTGRES_DB"' < server/backups/lab3-before-lab4-2026-10-31T03-46-14-578Z.sql
+COPY 7 COPY 4 COPY 9 COPY 12 COPY 7 COPY 0 COPY 19 COPY 28 COPY 15 COPY 9      (no ERROR)
+$ cd server && npx prisma migrate deploy
+Applying migration `20261030045000_add_actions_taken_and_workflow_fields`
+All migrations have been successfully applied.
+$ npm run db:verify:lab4 --prefix server -- --snapshot backups/snapshot-2026-10-31T03-46-21-634Z.json --at-upgrade
+[db:verify:lab4] Results (26 checks, 0 failure(s))
+[db:verify:lab4] ✓ All checks passed
+```
+
+`lab4-live-check.ts --mode status-changed-at` creates a new Ticket as jennifer (so no captured Ticket
+is touched), writes every step through HTTP (jennifer for the Ticket and comment, alex for everything
+else), and reads the row after each step with a read-only
+`SELECT "currentStatus", "statusChangedAt"::text, "updatedAt"::text, "createdAt"::text, version`.
+Values are compared as the stored text, so "unchanged" means every digit is the same. Postgres prints
+timestamps without trailing zeros (`04:54:24.01` is `.010`). Steps are 25 ms apart. Lab 4 app on 3400.
+
+```
+$ npx tsx scripts/lab4-live-check.ts --base http://localhost:3400 --mode status-changed-at --round 1
+[status-changed-at round 1] Ticket TKT-2026-000029 (id 29), Requester jennifer.anderson@example.com, staff alex.staff@tiktockit.com
+  ok   | step                                     | HTTP | currentStatus         | statusChangedAt         | updatedAt               | sca chg | upd chg | expected
+  PASS | 1 create Ticket                          | 201  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:23.805 | -       | -       | statusChangedAt - createdAt = 0 ms (<= 1000)
+  PASS | 2a public comment (Requester)            | 201  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:23.805 | no      | no      | HTTP 201, statusChangedAt unchanged
+  PASS | 2b internal note (IT Staff)              | 201  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:23.805 | no      | no      | HTTP 201, statusChangedAt unchanged
+  PASS | 2c owner -> ben                          | 200  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:24.01  | no      | yes     | HTTP 200, statusChangedAt unchanged, updatedAt changed
+  PASS | 2d IT priority -> HIGH                   | 200  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:24.069 | no      | yes     | HTTP 200, statusChangedAt unchanged, updatedAt changed
+  PASS | 2e create Action                         | 201  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:24.069 | no      | no      | HTTP 201, statusChangedAt unchanged
+  PASS | 2f edit Action (PATCH)                   | 200  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:24.069 | no      | no      | HTTP 200, statusChangedAt unchanged
+  PASS | 2g Action status -> IN_PROGRESS          | 200  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:24.069 | no      | no      | HTTP 200, statusChangedAt unchanged
+  PASS | 2h refused transition NEW -> RESOLVED    | 400  | NEW                   | 2026-10-31 04:54:23.805 | 2026-10-31 04:54:24.069 | no      | no      | HTTP 400, statusChangedAt unchanged
+  PASS | 3a NEW -> OPEN                           | 200  | OPEN                  | 2026-10-31 04:54:24.36  | 2026-10-31 04:54:24.361 | yes     | yes     | HTTP 200, later than before
+  PASS | 3b OPEN -> IN_PROGRESS                   | 200  | IN_PROGRESS           | 2026-10-31 04:54:24.404 | 2026-10-31 04:54:24.405 | yes     | yes     | HTTP 200, later than before
+  PASS | 3c IN_PROGRESS -> WAITING_FOR_REQUESTER  | 200  | WAITING_FOR_REQUESTER | 2026-10-31 04:54:24.451 | 2026-10-31 04:54:24.452 | yes     | yes     | HTTP 200, later than before
+  PASS | 3d WAITING_FOR_REQUESTER -> IN_PROGRESS  | 200  | IN_PROGRESS           | 2026-10-31 04:54:24.498 | 2026-10-31 04:54:24.499 | yes     | yes     | HTTP 200, later than before
+  PASS | 3e IN_PROGRESS -> WAITING_FOR_REQUESTER  | 200  | WAITING_FOR_REQUESTER | 2026-10-31 04:54:24.545 | 2026-10-31 04:54:24.546 | yes     | yes     | HTTP 200, later than before and than the first WAITING
+  final version of the Ticket row: 1
+[status-changed-at round 1] ALL PASSED (14 steps)
+
+$ npx tsx scripts/lab4-live-check.ts --base http://localhost:3400 --mode status-changed-at --round 2
+[status-changed-at round 2] Ticket TKT-2026-000030 (id 30), Requester jennifer.anderson@example.com, staff alex.staff@tiktockit.com
+  PASS | 1 create Ticket                          | 201  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.223 | -       | -       | statusChangedAt - createdAt = 0 ms (<= 1000)
+  PASS | 2a public comment (Requester)            | 201  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.223 | no      | no      | HTTP 201, statusChangedAt unchanged
+  PASS | 2b internal note (IT Staff)              | 201  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.223 | no      | no      | HTTP 201, statusChangedAt unchanged
+  PASS | 2c owner -> ben                          | 200  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.409 | no      | yes     | HTTP 200, statusChangedAt unchanged, updatedAt changed
+  PASS | 2d IT priority -> HIGH                   | 200  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.453 | no      | yes     | HTTP 200, statusChangedAt unchanged, updatedAt changed
+  PASS | 2e create Action                         | 201  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.453 | no      | no      | HTTP 201, statusChangedAt unchanged
+  PASS | 2f edit Action (PATCH)                   | 200  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.453 | no      | no      | HTTP 200, statusChangedAt unchanged
+  PASS | 2g Action status -> IN_PROGRESS          | 200  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.453 | no      | no      | HTTP 200, statusChangedAt unchanged
+  PASS | 2h refused transition NEW -> RESOLVED    | 400  | NEW                   | 2026-10-31 04:54:27.223 | 2026-10-31 04:54:27.453 | no      | no      | HTTP 400, statusChangedAt unchanged
+  PASS | 3a NEW -> OPEN                           | 200  | OPEN                  | 2026-10-31 04:54:27.731 | 2026-10-31 04:54:27.732 | yes     | yes     | HTTP 200, later than before
+  PASS | 3b OPEN -> IN_PROGRESS                   | 200  | IN_PROGRESS           | 2026-10-31 04:54:27.777 | 2026-10-31 04:54:27.778 | yes     | yes     | HTTP 200, later than before
+  PASS | 3c IN_PROGRESS -> WAITING_FOR_REQUESTER  | 200  | WAITING_FOR_REQUESTER | 2026-10-31 04:54:27.823 | 2026-10-31 04:54:27.824 | yes     | yes     | HTTP 200, later than before
+  PASS | 3d WAITING_FOR_REQUESTER -> IN_PROGRESS  | 200  | IN_PROGRESS           | 2026-10-31 04:54:27.87  | 2026-10-31 04:54:27.871 | yes     | yes     | HTTP 200, later than before
+  PASS | 3e IN_PROGRESS -> WAITING_FOR_REQUESTER  | 200  | WAITING_FOR_REQUESTER | 2026-10-31 04:54:27.918 | 2026-10-31 04:54:27.919 | yes     | yes     | HTTP 200, later than before and than the first WAITING
+  final version of the Ticket row: 1
+[status-changed-at round 2] ALL PASSED (14 steps)
+```
+
+(The HTTP column is narrowed for reading; the values are as printed.)
+
+Result: in both rounds `statusChangedAt` equals `createdAt` at creation (0 ms apart); it keeps every
+digit through a comment, a note, an owner change, an IT priority change, an Action create, edit, and
+status change, and a refused transition (400); `updatedAt` does change at the owner and priority steps,
+so the two clocks are separate. Every Ticket status transition moves `statusChangedAt` later, and
+re-entering WAITING_FOR_REQUESTER (3e) gives a later value than the first WAITING (3c), so the clock
+restarts (BR-39).
+
+Observations, not failures of this check:
+- `statusChangedAt` and `updatedAt` differ by 1 ms after a transition: the handler sets
+  `statusChangedAt` with `new Date()` and Prisma sets `@updatedAt` separately.
+- The refused transition returns the Lab 3 body without `code`, and the Ticket `version` stays 1. The
+  api-spec section 6 changes to the Ticket endpoints (`expectedVersion`/`version`, the resolution gate,
+  the `INVALID_TRANSITION` code, the additive response fields) are scheduled for Issue 4 in tests.md
+  (API-18, API-39); this branch implements only `statusChangedAt` from that section.
+
+The regular live check, one more round on the same database:
+
+```
+$ npx tsx scripts/lab4-live-check.ts --base http://localhost:3400 --round 5b
+  PASS  (a) statuses: 200 x19, 201 x1 | same id: 1 distinct id(s): 3 | rows with that clientRequestId: 1 | Actions 0 -> 1
+  PASS  (b) statuses: 201 x20 | distinct ids: 20 | Actions 1 -> 21 (+20)
+  PASS  (c) statuses: 200 x1, 409 STALE_VERSION x19 | version 1 -> 2 | stored = writer 2
+  PASS  (d) statuses: 200 x1, 409 ACTION_TERMINAL x9 | COMPLETED, version 1 -> 2
+  PASS  (e) every cell matches api-spec section 11: 7 callers x 4 endpoints
+  PASS  (e) refused edits and status changes wrote nothing: 10 target Actions, 0 changed
+  PASS  (f) actions list and Lab 3 ticket detail: byte-identical 404
+  PASS  Ticket row unchanged
+Actions on TKT-2026-000008: 39; ActionTaken total: 41
+[live-check round 5b] ALL PASSED
+```
+
+(ActionTaken total 41 = 39 from this round + 1 Action on each of the two step 5b Tickets.)
+The Lab 4 app was stopped; ports 3000, 3300, 3400, and 5173 are free and no `tsx src/index.ts`
+process is left.
+
+## Step 6, final run (the run that counts). Clean-up (finished 2026-10-31T05:10:35Z)
+
+```
+$ npm run db:reset --prefix server                  # target printed first: toktickit_db
+10 migrations found in prisma/migrations
+All migrations have been successfully applied.
+Seeding categories, users, and related systems completed successfully.
+Database reset completed successfully.
+
+$ ports 3000, 3300, 3400, 5173: free | node "tsx src/index.ts" processes: none
+
+$ git worktree prune && git worktree list
+D:/ปี3/Term1/CPE334 SOF EN/toktickit       9380dd9 [feature/2-lab4-actions-taken-foundation]
+
+$ cd server && npx vitest run                       # on the database just reset, 05:09:13Z - 05:10:17Z
+ Test Files  25 passed (25)
+      Tests  233 passed (233)
+   Duration  59.34s
+
+$ cd client && npx vitest run                       # first run, finished 05:10:35Z
+ FAIL  tests/lab-01/App.test.tsx > App > renders Create Support Ticket screen when authenticated user is active
+ Test Files  1 failed | 10 passed (11)
+      Tests  1 failed | 47 passed (48)
+$ npx vitest run tests/lab-01/App.test.tsx          # the failing file alone
+      Tests  4 passed (4)
+$ npx vitest run                                    # second full run
+ Test Files  11 passed (11)
+      Tests  48 passed (48)
+
+$ git status --short
+ M docs/lab-04/evidence/issue-2-rehearsal.md
+ M server/scripts/lab4-live-check.ts
+
+$ git diff --stat -- server/tests/lab-01 server/tests/lab-02 server/tests/lab-03 client/tests e2e
+(empty)
+
+$ docker exec toktickit-db psql -d postgres -c "SELECT datname FROM pg_database"
+postgres | template0 | template1 | toktickit_db          (no toktickit_upgrade_test)
+
+$ cd server && npx prisma migrate status
+10 migrations found in prisma/migrations
+Database schema is up to date!
+```
+
+The client failure is recorded as it happened. The error text of the first run was not kept. The test
+waits for the "My Tickets" heading and then for the "Create Support Ticket" text, each with the default
+1 s `waitFor` timeout, and the first run reported a much longer jsdom environment time (72.8 s) right
+after the server suite. This points to a timeout under load, but it was not proven. No client file was
+changed (`git diff --stat -- client/tests` is empty).
