@@ -15,6 +15,10 @@ interface ActionsTakenCardProps {
   ticketStatus: string;
   mode: "staff" | "requester";
   currentUser?: { id: number; name: string };
+  /** Called after an Action was created, edited, or changed status (the page reloads the Ticket). */
+  onActionsChanged?: () => void;
+  /** Changing it reloads the list (for example after the server refused Resolved). */
+  refreshKey?: number;
 }
 
 type DialogState = { kind: "create" } | { kind: "view"; actionId: number };
@@ -25,10 +29,12 @@ const EyeIcon = () => (
   </svg>
 );
 
-export const ActionsTakenCard: React.FC<ActionsTakenCardProps> = ({ ticketId, ticketStatus, mode, currentUser }) => {
+export const ActionsTakenCard: React.FC<ActionsTakenCardProps> = ({
+  ticketId, ticketStatus, mode, currentUser, onActionsChanged, refreshKey = 0,
+}) => {
   const staff = mode === "staff";
   const headingId = useId();
-  const { actions, error, loading, reload, replace } = useActions(ticketId, ticketStatus);
+  const { actions, error, loading, reload, replace } = useActions(ticketId, `${ticketStatus}:${refreshKey}`);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [announcement, setAnnouncement] = useState("");
   // Set when the server says the Ticket no longer accepts actions (a 409 on create).
@@ -165,6 +171,8 @@ export const ActionsTakenCard: React.FC<ActionsTakenCardProps> = ({ ticketId, ti
 
   return (
     <section
+      id="actions-taken"
+      tabIndex={-1}
       className={`zg-actions-card zg-actions-scope mb-4 ${staff ? "card border-0 shadow-sm" : "zg-card p-4"}`}
       aria-labelledby={headingId}
       data-testid="actions-taken-card"
@@ -188,13 +196,18 @@ export const ActionsTakenCard: React.FC<ActionsTakenCardProps> = ({ ticketId, ti
             setDialog(null);
             setAnnouncement("Action added.");
             void reload();
+            onActionsChanged?.();
           }}
           onSaved={saved => {
             replace(saved);
             setDialog(null);
             setAnnouncement("Action saved.");
+            onActionsChanged?.();
           }}
-          onActionUpdated={replace}
+          onActionUpdated={updated => {
+            replace(updated);
+            onActionsChanged?.();
+          }}
           onTicketClosed={() => setClosedByServer(true)}
         />
       )}

@@ -34,6 +34,13 @@ Lab 1-3 clients and tests keep working.
   7. 400 validation that depends on the stored state (for example a Result required to
      complete an Action that has none yet)
 
+  Exception for `PATCH /api/staff/tickets/:id/status`: after `STALE_VERSION`, a pair that is not in
+  the matrix (400 `INVALID_TRANSITION`, decided from the stored status) is answered before the
+  resolution gate (409 `OPEN_ACTIONS_BLOCK_RESOLUTION`), because the gate only has a meaning for a
+  permitted transition (AC-13 and AC-14 speak of "a permitted status"). So the order for that
+  endpoint is: `STALE_VERSION`, `INVALID_TRANSITION`, `OPEN_ACTIONS_BLOCK_RESOLUTION`. A Ticket in a
+  terminal status (Cancelled) has no permitted pair, so it answers 400, not 409.
+
 ### Status and error codes
 
 | Status | Code | Meaning |
@@ -277,7 +284,16 @@ Lab 4 behavior:
 - The Lab 3 invalid-transition body is kept and gains a code:
   `{ "error": "Invalid status transition", "code": "INVALID_TRANSITION", "from": "NEW", "to": "CLOSED" }`.
 
-Response 200 is the updated Ticket (see below).
+Response 200 is the updated Ticket header: the fields this endpoint returned in Lab 3 are kept, and the
+response gains `version`, `resolvedAt`, `statusChangedAt`, `currentStatus`, `itPriority`, `ticketOwnerId`,
+`ticketOwnerName`, `problemAppearsResolved`, and `openActionsCount` (and `cancelledActionsCount` after a
+cancel). The owner and priority endpoints return the same header. It never contains comments, notes, or
+attachments. A 409 `STALE_VERSION` from these endpoints has the body
+`{ "error", "code", "currentVersion", "current": <that header> }`.
+
+For the three Ticket endpoints the 404 check comes before the 400 checks (check order step 4 before step 5);
+the Lab 3 error texts are unchanged. A 401, 403, or 404 from these endpoints keeps its Lab 3 body without a
+`code`; only the errors named in this section (and `VALIDATION_FAILED` for a malformed `expectedVersion`) carry a `code`.
 
 ### PATCH /api/staff/tickets/:id/owner and /priority (existing)
 

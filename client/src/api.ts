@@ -312,6 +312,57 @@ export interface StaffTicketDetail {
   ticketOwnerName: string | null;
   createdAt: string;
   updatedAt: string;
+  // Lab 4 additive fields (api-spec section 6)
+  version?: number;
+  resolvedAt?: string | null;
+  statusChangedAt?: string;
+  openActionsCount?: number;
+}
+
+/** Ticket header returned by the Lab 4 owner, priority, and status endpoints (api-spec section 6). */
+export interface TicketHeader {
+  id: number;
+  currentStatus: string;
+  itPriority: "LOW" | "MEDIUM" | "HIGH" | null;
+  ticketOwnerId: number | null;
+  ticketOwnerName: string | null;
+  problemAppearsResolved: boolean;
+  version: number;
+  resolvedAt: string | null;
+  statusChangedAt: string;
+  openActionsCount: number;
+}
+
+/** Lab 4: the Ticket version the change is based on; omitted when the Ticket has none. */
+export interface TicketUpdateOptions {
+  expectedVersion?: number;
+}
+
+/** Error of a Ticket update, with the Lab 4 details when the server sent them. */
+export type TicketUpdateError = Error & {
+  status?: number;
+  code?: string;
+  from?: string;
+  to?: string;
+  openActionsCount?: number;
+  currentVersion?: number;
+  current?: TicketHeader;
+};
+
+function ticketUpdateError(res: Response, data: any, fallback: string): TicketUpdateError {
+  const err: TicketUpdateError = new Error(data?.error ?? fallback);
+  err.status = res.status;
+  err.code = data?.code;
+  err.from = data?.from;
+  err.to = data?.to;
+  err.openActionsCount = data?.openActionsCount;
+  err.currentVersion = data?.currentVersion;
+  err.current = data?.current;
+  return err;
+}
+
+function withExpectedVersion<T extends object>(body: T, options?: TicketUpdateOptions): T & { expectedVersion?: number } {
+  return options?.expectedVersion !== undefined ? { ...body, expectedVersion: options.expectedVersion } : body;
 }
 
 export async function getStaffTicketDetail(
@@ -726,15 +777,16 @@ export async function postPublicComment(
 // Endpoint 13 — Claim / reassign / unassign Ticket Owner
 export async function claimTicketOwner(
   ticketId: number,
-  ticketOwnerId: number | null
-): Promise<{ id: number; ticketOwnerId: number | null; ticketOwnerName: string | null }> {
+  ticketOwnerId: number | null,
+  options?: TicketUpdateOptions
+): Promise<{ id: number; ticketOwnerId: number | null; ticketOwnerName: string | null } & Partial<TicketHeader>> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api/staff/tickets/${ticketId}/owner`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ ticketOwnerId }),
+      body: JSON.stringify(withExpectedVersion({ ticketOwnerId }, options)),
     });
   } catch {
     throw new Error("Unable to connect to TokTickIT API");
@@ -742,7 +794,7 @@ export async function claimTicketOwner(
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error ?? "Unable to update ticket owner");
+    throw ticketUpdateError(res, data, "Unable to update ticket owner");
   }
   return data;
 }
@@ -750,15 +802,16 @@ export async function claimTicketOwner(
 // Endpoint 14 — Set IT Priority
 export async function setItPriority(
   ticketId: number,
-  itPriority: "LOW" | "MEDIUM" | "HIGH"
-): Promise<{ id: number; itPriority: "LOW" | "MEDIUM" | "HIGH" }> {
+  itPriority: "LOW" | "MEDIUM" | "HIGH",
+  options?: TicketUpdateOptions
+): Promise<{ id: number; itPriority: "LOW" | "MEDIUM" | "HIGH" } & Partial<TicketHeader>> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api/staff/tickets/${ticketId}/priority`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ itPriority }),
+      body: JSON.stringify(withExpectedVersion({ itPriority }, options)),
     });
   } catch {
     throw new Error("Unable to connect to TokTickIT API");
@@ -766,7 +819,7 @@ export async function setItPriority(
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error ?? "Unable to update IT priority");
+    throw ticketUpdateError(res, data, "Unable to update IT priority");
   }
   return data;
 }
@@ -774,15 +827,16 @@ export async function setItPriority(
 // Endpoint 15 — Status transition
 export async function setTicketStatus(
   ticketId: number,
-  newStatus: string
-): Promise<{ id: number; currentStatus: string }> {
+  newStatus: string,
+  options?: TicketUpdateOptions
+): Promise<{ id: number; currentStatus: string } & Partial<TicketHeader> & { cancelledActionsCount?: number }> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api/staff/tickets/${ticketId}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ newStatus }),
+      body: JSON.stringify(withExpectedVersion({ newStatus }, options)),
     });
   } catch {
     throw new Error("Unable to connect to TokTickIT API");
@@ -790,10 +844,7 @@ export async function setTicketStatus(
 
   const data = await res.json();
   if (!res.ok) {
-    const err: any = new Error(data.error ?? "Unable to update ticket status");
-    err.from = data.from;
-    err.to = data.to;
-    throw err;
+    throw ticketUpdateError(res, data, "Unable to update ticket status");
   }
   return data;
 }
