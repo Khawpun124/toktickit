@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { getPrisma } from "../../src/prisma.js";
 import { MESSAGES } from "../../src/actions/validation.js";
 import { api, createFixture, missingId, ticketApi, uuid, type Fixture } from "./helpers.js";
+import { dashApi } from "./dashboard-support.js";
 
 /**
  * API-42 (Actions endpoints): requests that break several rules at once. The first failing
@@ -190,5 +191,88 @@ describe("API-42: check order of the Ticket owner, priority, and status endpoint
 
   it("none of the Ticket cases above changed a Ticket", async () => {
     expect(await snapshotTickets()).toEqual(ticketsBefore);
+  });
+});
+
+/**
+ * API-42 (dashboard endpoints, Issue 5): the dashboards have no resource, body, or state checks,
+ * so the order is 401, 403 PASSWORD_CHANGE_REQUIRED, 403 FORBIDDEN, then 200. Ids sent in the
+ * query never matter (BR-30).
+ */
+describe("API-42: check order of the dashboard endpoints", () => {
+  let fx: Fixture;
+  const u = {} as Fixture["users"];
+  const forged = () => `?userId=${u.staffA.id}&requesterId=abc&role=ADMINISTRATOR`;
+
+  beforeAll(async () => {
+    fx = await createFixture("order-dash", "dashtest");
+    Object.assign(u, fx.users);
+  });
+  afterAll(async () => {
+    await fx.cleanup();
+  });
+
+  const unauthenticated = { error: "Unauthorized", code: "UNAUTHENTICATED" };
+  const passwordChange = { error: "Password change required before accessing this resource", code: "PASSWORD_CHANGE_REQUIRED" };
+  const forbidden = { error: "Forbidden", code: "FORBIDDEN" };
+
+  it("requester: no session (or a bad one) beats everything, forged ids included", async () => {
+    for (const cookie of ["", "tk_session=not-a-real-session"]) {
+      const res = await dashApi.requester(cookie, forged());
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(unauthenticated);
+    }
+  });
+
+  it("requester: password change required beats wrong role", async () => {
+    // mustChangeStaff has the wrong role for this endpoint, but step 2 answers first
+    const res = await dashApi.requester(u.mustChangeStaff.cookie, forged());
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual(passwordChange);
+  });
+
+  it("requester: wrong role gives 403 FORBIDDEN, with or without forged ids", async () => {
+    for (const user of [u.staffA, u.admin]) {
+      for (const q of ["", forged()]) {
+        const res = await dashApi.requester(user.cookie, q);
+        expect(res.status).toBe(403);
+        expect(res.body).toEqual(forbidden);
+      }
+    }
+  });
+
+  it("requester: the right role with forged ids still gives 200 for the session user", async () => {
+    const res = await dashApi.requester(u.requesterA.cookie, forged());
+    expect(res.status).toBe(200);
+    expect(res.body.metrics.open.count).toBe(0);
+  });
+
+  it("staff: no session (or a bad one) beats everything", async () => {
+    for (const cookie of ["", "tk_session=not-a-real-session"]) {
+      const res = await dashApi.staff(cookie, forged());
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(unauthenticated);
+    }
+  });
+
+  it("staff: password change required beats wrong role", async () => {
+    const res = await dashApi.staff(u.mustChangeRequester.cookie, forged());
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual(passwordChange);
+  });
+
+  it("staff: wrong role gives 403 FORBIDDEN, with or without forged ids", async () => {
+    for (const q of ["", forged()]) {
+      const res = await dashApi.staff(u.requesterA.cookie, q);
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual(forbidden);
+    }
+  });
+
+  it("staff: the right role with forged ids gives 200, and a forged role does not add user counts", async () => {
+    const res = await dashApi.staff(u.staffB.cookie, forged());
+    expect(res.status).toBe(200);
+    expect(res.body.metrics.myAssigned.query).toContain(`ticketOwnerId=${u.staffB.id}&`);
+    expect(res.body).not.toHaveProperty("users");
   });
 });

@@ -165,3 +165,75 @@ describe("Authorization of the Ticket workflow endpoints (SEC-01, SEC-02, SEC-03
     }
   });
 });
+
+/**
+ * SEC-01, SEC-02, SEC-03 for the dashboard endpoints added in Issue 5. They are reads, so SEC-01
+ * here is the role rule of api-spec section 11 (a Requester cannot read the staff dashboard, and
+ * staff cannot read the Requester dashboard), checked to change nothing.
+ */
+describe("Authorization of the dashboard endpoints (SEC-01, SEC-02, SEC-03)", () => {
+  const prisma = getPrisma();
+  let fx: Fixture;
+
+  beforeAll(async () => {
+    fx = await createFixture("authz-dash", "dashtest");
+    await fx.createTicket({ requester: "requesterA", status: "OPEN" });
+  });
+  afterAll(async () => {
+    await fx.cleanup();
+  });
+
+  const endpoints = ["/api/dashboard/requester", "/api/dashboard/staff"];
+  const get = (path: string, cookie: string) => request(app).get(path).set("Cookie", cookie);
+  const snapshot = async () => ({
+    tickets: await prisma.ticket.count(),
+    users: await prisma.user.count(),
+    actions: await prisma.actionTaken.count(),
+  });
+
+  it("SEC-01: a Requester gets 403 from the staff dashboard, and IT Staff and Administrators get 403 from the Requester dashboard", async () => {
+    const before = await snapshot();
+    for (const requester of [fx.users.requesterA, fx.users.requesterB]) {
+      const res = await get("/api/dashboard/staff", requester.cookie);
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({ error: "Forbidden", code: "FORBIDDEN" });
+    }
+    for (const staff of [fx.users.staffA, fx.users.admin]) {
+      const res = await get("/api/dashboard/requester", staff.cookie);
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({ error: "Forbidden", code: "FORBIDDEN" });
+    }
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("SEC-02: every dashboard endpoint without a session gives 401", async () => {
+    for (const path of endpoints) {
+      for (const cookie of ["", "tk_session=not-a-real-session"]) {
+        const res = await get(path, cookie);
+        expect(res.status, `${path} ${cookie}`).toBe(401);
+        expect(res.body).toEqual({ error: "Unauthorized", code: "UNAUTHENTICATED" });
+      }
+    }
+  });
+
+  it("SEC-03: a user who must change the initial password is blocked from the dashboards until the password is changed", async () => {
+    const cases = [
+      { user: fx.users.mustChangeRequester, path: "/api/dashboard/requester" },
+      { user: fx.users.mustChangeStaff, path: "/api/dashboard/staff" },
+    ];
+    for (const c of cases) {
+      const blocked = await get(c.path, c.user.cookie);
+      expect(blocked.status, c.path).toBe(403);
+      expect(blocked.body).toEqual({ error: "Password change required before accessing this resource", code: "PASSWORD_CHANGE_REQUIRED" });
+
+      const newPassword = "ChangedPass456!";
+      const change = await request(app)
+        .post("/api/auth/change-password")
+        .set("Cookie", c.user.cookie)
+        .send({ currentPassword: TEST_PASSWORD, newPassword, confirmPassword: newPassword });
+      expect(change.status).toBe(200);
+      const cookie = await login(c.user.email, newPassword);
+      expect((await get(c.path, cookie)).status, c.path).toBe(200);
+    }
+  });
+});
