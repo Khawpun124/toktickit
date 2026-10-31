@@ -1444,7 +1444,8 @@ app.patch("/api/staff/tickets/:id/status", requireAuth, requirePasswordChanged, 
 
     const updated = await prisma.ticket.update({
       where: { id: parsedTicketId },
-      data: { currentStatus: newStatus as any },
+      // BR-39: statusChangedAt records the server time of every status transition.
+      data: { currentStatus: newStatus as any, statusChangedAt: new Date() },
     });
 
     res.status(200).json({
@@ -1797,6 +1798,10 @@ app.post("/api/admin/users/:id/reset-password", requireAuth, requirePasswordChan
     res.status(500).json({ error: "Unable to reset password" });
   }
 });
+
+// Lab 4 Actions Taken endpoints (src/routes/actions.ts)
+import { actionsRouter } from "./routes/actions.js";
+app.use(actionsRouter);
 
 export default app;
 
