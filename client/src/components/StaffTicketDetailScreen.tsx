@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
 import { ActionsTakenCard } from "./actions/ActionsTakenCard.js";
+import { TicketStatusControl } from "./tickets/TicketStatusControl.js";
+import { READ_ONLY_TICKET_STATUSES } from "../ticketWorkflow.js";
 import {
   getStaffTicketDetail,
   StaffTicketDetail,
@@ -15,40 +17,15 @@ import {
   InternalNote,
   claimTicketOwner,
   setItPriority,
-  setTicketStatus,
   getAttachments,
   AttachmentItem,
   downloadAttachment,
+  TicketUpdateError,
 } from "../api.js";
 
-// ---------------------------------------------------------------------------
-// Status Transition Matrix (mirrors backend BR-11) — O(1) lookup
-// ---------------------------------------------------------------------------
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  NEW: ["OPEN", "CANCELLED"],
-  OPEN: ["IN_PROGRESS", "CANCELLED"],
-  IN_PROGRESS: ["WAITING_FOR_REQUESTER", "RESOLVED", "CANCELLED"],
-  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "RESOLVED", "CANCELLED"],
-  RESOLVED: ["CLOSED", "REOPENED"],
-  CLOSED: ["REOPENED"],
-  REOPENED: ["OPEN"],
-  CANCELLED: [],
-};
+// The status matrix and the confirmation rule live in ../ticketWorkflow.ts (Lab 4).
 
-// Status transition pairs that require user confirmation before applying (per Lab 3 Specification matrix)
-const CONFIRM_TRANSITION_PAIRS = new Set([
-  "NEW->CANCELLED",
-  "OPEN->CANCELLED",
-  "IN_PROGRESS->RESOLVED",
-  "IN_PROGRESS->CANCELLED",
-  "WAITING_FOR_REQUESTER->RESOLVED",
-  "WAITING_FOR_REQUESTER->CANCELLED",
-  "CLOSED->REOPENED",
-]);
-
-export const isConfirmationRequired = (fromStatus: string, toStatus: string): boolean => {
-  return CONFIRM_TRANSITION_PAIRS.has(`${fromStatus}->${toStatus}`);
-};
+const STALE_TICKET_MESSAGE = "This ticket was changed by someone else, so your change was not saved. Reload to see the latest version.";
 
 // Active (non-terminal) statuses — CLOSED and CANCELLED are terminal
 const STATUS_LABELS: Record<string, string> = {
@@ -117,8 +94,10 @@ export const StaffTicketDetailScreen: React.FC = () => {
   const [ownerError, setOwnerError] = useState<string | null>(null);
   const [prioritySaving, setPrioritySaving] = useState(false);
   const [priorityError, setPriorityError] = useState<string | null>(null);
-  const [statusSaving, setStatusSaving] = useState(false);
-  const [statusError, setStatusError] = useState<string | null>(null);
+  // A 409 STALE_VERSION on owner or priority offers a reload instead of overwriting.
+  const [fieldConflict, setFieldConflict] = useState(false);
+  // Bumped to make the Actions Taken card load its list again.
+  const [actionsRefreshKey, setActionsRefreshKey] = useState(0);
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"comments" | "notes" | "attachments">("comments");
@@ -227,6 +206,27 @@ export const StaffTicketDetailScreen: React.FC = () => {
 
   // ── Operations handlers ──────────────────────────────────────────────────
 
+  /** Merges a Ticket header from a Lab 4 response (version, status, owner, ...) without a reload. */
+  const applyTicketChanges = (changes: Partial<StaffTicketDetail>) => {
+    const defined = Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined));
+    setTicket((prev) => (prev ? { ...prev, ...defined } : prev));
+  };
+
+  /** Loads the Ticket again (after a conflict, or when its Actions changed). */
+  const reloadTicket = useCallback(async () => {
+    if (!id) return;
+    try {
+      const fresh = await getStaffTicketDetail(id);
+      setTicket(fresh);
+      setFieldConflict(false);
+    } catch {
+      // The page keeps the data it has; the next change will meet the server's answer.
+    }
+  }, [id]);
+
+  /** Lab 4: the version the change is based on, when the Ticket has one. */
+  const versionOptions = () => (ticket?.version !== undefined ? { expectedVersion: ticket.version } : undefined);
+
   /** Owner dropdown change */
   const handleOwnerChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!ticket) return;
@@ -234,18 +234,18 @@ export const StaffTicketDetailScreen: React.FC = () => {
     const newOwnerId = val === "" ? null : parseInt(val, 10);
 
     setOwnerError(null);
+    setFieldConflict(false);
     setOwnerSaving(true);
     try {
-      const res = await claimTicketOwner(ticket.id, newOwnerId);
+      const options = versionOptions();
+      const res = options ? await claimTicketOwner(ticket.id, newOwnerId, options) : await claimTicketOwner(ticket.id, newOwnerId);
       const ownerUser = newOwnerId != null ? staffUsers.find((u) => u.id === newOwnerId) : null;
-      setTicket((prev) =>
-        prev
-          ? { ...prev, ticketOwnerId: res.ticketOwnerId, ticketOwnerName: res.ticketOwnerName }
-          : prev
-      );
+      applyTicketChanges({ ...res, ticketOwnerId: res.ticketOwnerId, ticketOwnerName: res.ticketOwnerName });
       flash(ownerUser ? `Owner set to ${ownerUser.name}` : "Ticket unassigned");
-    } catch (err: any) {
-      setOwnerError(err.message || "Unable to update owner");
+    } catch (err) {
+      const e2 = err as TicketUpdateError;
+      if (e2.code === "STALE_VERSION") setFieldConflict(true);
+      else setOwnerError(e2.message || "Unable to update owner");
     } finally {
       setOwnerSaving(false);
     }
@@ -256,53 +256,32 @@ export const StaffTicketDetailScreen: React.FC = () => {
     if (!ticket) return;
     const val = e.target.value as "LOW" | "MEDIUM" | "HIGH";
     setPriorityError(null);
+    setFieldConflict(false);
     setPrioritySaving(true);
     try {
-      await setItPriority(ticket.id, val);
-      setTicket((prev) => prev ? { ...prev, itPriority: val } : prev);
+      const options = versionOptions();
+      const res = options ? await setItPriority(ticket.id, val, options) : await setItPriority(ticket.id, val);
+      applyTicketChanges({ ...res, itPriority: val });
       flash(`IT Priority set to ${val}`);
-    } catch (err: any) {
-      setPriorityError(err.message || "Unable to update priority");
+    } catch (err) {
+      const e2 = err as TicketUpdateError;
+      if (e2.code === "STALE_VERSION") setFieldConflict(true);
+      else setPriorityError(e2.message || "Unable to update priority");
     } finally {
       setPrioritySaving(false);
     }
   };
 
-  /** Status dropdown change — requires confirmation for certain transitions */
-  const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!ticket) return;
-    const newStatus = e.target.value;
-    if (!newStatus) return;
+  /** The Actions Taken card changed an Action: reload the Ticket (unfinished-action count). */
+  const handleActionsChanged = useCallback(() => {
+    void reloadTicket();
+  }, [reloadTicket]);
 
-    // Confirmation for specific transitions per Status Transition Matrix
-    if (isConfirmationRequired(ticket.currentStatus, newStatus)) {
-      const label = STATUS_LABELS[newStatus] ?? newStatus;
-      const confirmed = window.confirm(
-        `Transition ticket to "${label}"?\n\nThis action may be difficult to reverse. Please confirm.`
-      );
-      if (!confirmed) {
-        // Reset dropdown visual
-        e.target.value = "";
-        return;
-      }
-    }
-
-    setStatusError(null);
-    setStatusSaving(true);
-    try {
-      await setTicketStatus(ticket.id, newStatus);
-      setTicket((prev) => prev ? { ...prev, currentStatus: newStatus } : prev);
-      flash(`Status changed to ${STATUS_LABELS[newStatus] ?? newStatus}`);
-    } catch (err: any) {
-      setStatusError(
-        err.from && err.to
-          ? `Cannot transition from ${err.from} to ${err.to}`
-          : err.message || "Unable to update status"
-      );
-    } finally {
-      setStatusSaving(false);
-    }
-  };
+  /** Status change needs fresh data: reload the Ticket and the Actions list. */
+  const reloadTicketAndActions = useCallback(async () => {
+    await reloadTicket();
+    setActionsRefreshKey((k) => k + 1);
+  }, [reloadTicket]);
 
   // ── Comment submit ───────────────────────────────────────────────────────
   const handleCommentSubmit = async (e: React.FormEvent) => {
@@ -396,16 +375,17 @@ export const StaffTicketDetailScreen: React.FC = () => {
     );
   }
 
-  const allowedNext = ALLOWED_TRANSITIONS[ticket.currentStatus] ?? [];
+  // Ticket Operations fields are read-only on a Closed or Cancelled Ticket (ui-spec section 8).
+  const operationsReadOnly = READ_ONLY_TICKET_STATUSES.includes(ticket.currentStatus);
 
   // ── Full render ──────────────────────────────────────────────────────────
   return (
     <div className="container py-4">
-      {/* Success flash */}
+      {/* Success flash (a polite live region) */}
       {successMsg && (
         <div
           className="alert alert-success alert-dismissible py-2 shadow-sm mb-3"
-          role="alert"
+          role="status"
           style={{ position: "sticky", top: 0, zIndex: 100 }}
         >
           ✓ {successMsg}
@@ -424,9 +404,12 @@ export const StaffTicketDetailScreen: React.FC = () => {
         <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
           <div>
             <span className="h4 fw-bold text-primary me-2">{ticket.ticketNumber}</span>
-            <span className={`badge ${getStatusBadgeClass(ticket.currentStatus)} me-2`}>
+            <span className={`badge ${getStatusBadgeClass(ticket.currentStatus)} me-2`} data-testid="ticket-summary-status">
               {STATUS_LABELS[ticket.currentStatus] ?? ticket.currentStatus}
             </span>
+            {ticket.version !== undefined && (
+              <span className="small text-muted me-2" data-testid="ticket-summary-version">Version {ticket.version}</span>
+            )}
             {ticket.problemAppearsResolved && (
               <span className="badge bg-warning text-dark ms-1">Problem Appears Resolved</span>
             )}
@@ -505,7 +488,14 @@ export const StaffTicketDetailScreen: React.FC = () => {
           </div>
 
           {/* ── Actions Taken (Lab 4), always visible above the tabs ───────── */}
-          <ActionsTakenCard ticketId={ticket.id} ticketStatus={ticket.currentStatus} mode="staff" currentUser={user ?? undefined} />
+          <ActionsTakenCard
+            ticketId={ticket.id}
+            ticketStatus={ticket.currentStatus}
+            mode="staff"
+            currentUser={user ?? undefined}
+            onActionsChanged={handleActionsChanged}
+            refreshKey={actionsRefreshKey}
+          />
 
           {/* ── Tabs ──────────────────────────────────────────────────────── */}
           <div className="card border-0 shadow-sm">
@@ -746,7 +736,7 @@ export const StaffTicketDetailScreen: React.FC = () => {
                   className="form-select form-select-sm"
                   value={ticket.ticketOwnerId ?? ""}
                   onChange={handleOwnerChange}
-                  disabled={ownerSaving}
+                  disabled={ownerSaving || operationsReadOnly}
                   aria-label="Select ticket owner"
                 >
                   <option value="">— Unassigned —</option>
@@ -770,7 +760,7 @@ export const StaffTicketDetailScreen: React.FC = () => {
                   className="form-select form-select-sm"
                   value={ticket.itPriority ?? ""}
                   onChange={handlePriorityChange}
-                  disabled={prioritySaving}
+                  disabled={prioritySaving || operationsReadOnly}
                   aria-label="Select IT priority"
                 >
                   <option value="" disabled>— Select Priority —</option>
@@ -782,43 +772,30 @@ export const StaffTicketDetailScreen: React.FC = () => {
                 {priorityError && <div className="small text-danger mt-1">{priorityError}</div>}
               </div>
 
-              {/* Status Transition */}
-              <div>
-                <label htmlFor="staff-status-select" className="form-label small fw-semibold mb-1">
-                  Change Status
-                </label>
-                <div className="mb-2">
-                  <span className={`badge ${getStatusBadgeClass(ticket.currentStatus)} me-1`}>
-                    {STATUS_LABELS[ticket.currentStatus] ?? ticket.currentStatus}
-                  </span>
-                  {allowedNext.length > 0 && (
-                    <span className="small text-muted">→ select new status</span>
-                  )}
+              {operationsReadOnly && (
+                <div className="small text-muted fst-italic" data-testid="operations-read-only">
+                  Owner and IT Priority are read-only while the ticket is {STATUS_LABELS[ticket.currentStatus]}.
                 </div>
-                {allowedNext.length > 0 ? (
-                  <select
-                    id="staff-status-select"
-                    className="form-select form-select-sm"
-                    value=""
-                    onChange={handleStatusChange}
-                    disabled={statusSaving}
-                    aria-label="Select new ticket status"
-                  >
-                    <option value="" disabled>— Transition to… —</option>
-                    {allowedNext.map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABELS[s] ?? s}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="small text-muted fst-italic">
-                    No further transitions available from this status.
-                  </div>
-                )}
-                {statusSaving && <div className="small text-muted mt-1">Saving…</div>}
-                {statusError && <div className="small text-danger mt-1">{statusError}</div>}
-              </div>
+              )}
+              {fieldConflict && (
+                <div className="small text-danger" role="alert">
+                  {STALE_TICKET_MESSAGE}{" "}
+                  <button type="button" className="btn btn-link btn-sm p-0 align-baseline" onClick={() => void reloadTicket()}>
+                    Reload
+                  </button>
+                </div>
+              )}
+
+              {/* Status Transition (Lab 4: matrix, confirmation, resolution gate) */}
+              <TicketStatusControl
+                ticket={ticket}
+                getStatusBadgeClass={getStatusBadgeClass}
+                onUpdated={(changes, message) => {
+                  applyTicketChanges(changes);
+                  flash(message);
+                }}
+                onReload={reloadTicketAndActions}
+              />
 
             </div>
           </div>
