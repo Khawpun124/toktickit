@@ -171,6 +171,134 @@ describe("Actions Taken list", () => {
   });
 });
 
+// ── The card wired into the real Ticket Detail screens (mocked fetch) ───
+
+/**
+ * Replaces fetch with a small router keyed by "METHOD /path". Unknown requests answer 404 and are
+ * recorded, so a test can assert that a screen called nothing unexpected.
+ */
+function mockServer(routes: Record<string, unknown>) {
+  vi.restoreAllMocks(); // drop the module spies so every request really goes through fetch
+  const unknown: string[] = [];
+  const seen: { key: string; init?: RequestInit }[] = [];
+  const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    const key = `${init?.method ?? "GET"} ${url.pathname}`;
+    seen.push({ key, init });
+    if (!(key in routes)) {
+      unknown.push(key);
+      return new Response(JSON.stringify({ error: "Not found" }), { status: 404 });
+    }
+    return new Response(JSON.stringify(routes[key]), { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+  return { spy, unknown, seen };
+}
+
+const ticketBase = {
+  id: TICKET_ID, ticketNumber: "TKT-2026-000501", requesterId: 31, categoryName: "Hardware",
+  relatedSystemName: "Corporate Laptop", summary: "Laptop battery drains quickly",
+  description: "The battery lasts less than an hour.", requestedPriority: "MEDIUM", itPriority: null,
+  currentStatus: "IN_PROGRESS", problemAppearsResolved: false,
+  createdAt: "2026-10-12T07:00:00.000Z", updatedAt: "2026-10-12T07:00:00.000Z",
+};
+
+describe("Actions Taken on the real Ticket Detail screens", () => {
+  it("UI-01: Staff Ticket Detail renders the Actions Taken card from the API, before the tabs, with the shared label", async () => {
+    const actions = [makeAction({ status: "PLANNED" }), makeAction({ status: "COMPLETED", result: "Battery replaced." })];
+    const server = mockServer({
+      "GET /api/auth/me": { id: STAFF.id, name: STAFF.name, email: "morgan@example.com", role: "IT_STAFF", mustChangePassword: false },
+      [`GET /api/staff/tickets/${TICKET_ID}`]: {
+        ...ticketBase, requesterName: "Jordan Requester", requesterEmail: "jordan@example.com",
+        categoryId: 1, relatedSystemId: 1, ticketOwnerId: null, ticketOwnerName: null,
+      },
+      "GET /api/staff/users": [{ id: STAFF.id, name: STAFF.name, email: "morgan@example.com", role: "IT_STAFF" }],
+      [`GET /api/tickets/${TICKET_ID}/comments`]: [],
+      [`GET /api/tickets/${TICKET_ID}/notes`]: [],
+      [`GET /api/tickets/${TICKET_ID}/attachments`]: [],
+      [`GET /api/tickets/${TICKET_ID}/actions`]: actions,
+    });
+    render(
+      <MemoryRouter initialEntries={[`/staff/tickets/${TICKET_ID}`]}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/staff/tickets/:id" element={<StaffTicketDetailScreen />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    const heading = await screen.findByRole("heading", { name: "Actions Taken (2)" });
+    const card = screen.getByTestId("actions-taken-card");
+    expect(card).toContainElement(heading);
+    const rows = within(screen.getByTestId("actions-table-view")).getAllByRole("row").slice(1);
+    expect(rows.map(r => Number(r.getAttribute("data-action-id")))).toEqual(actions.map(a => a.id));
+
+    // Placement: in the tabs' column, before the tab card (DOM order), never inside a tab.
+    const tablist = screen.getByRole("tablist");
+    expect(card.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.closest(".col-lg-8")).not.toBeNull();
+    expect(card.closest(".col-lg-8")).toBe(tablist.closest(".col-lg-8"));
+    expect(tablist.closest(".card")).not.toContainElement(card);
+
+    expect(within(card).getByText("Visible to the Requester")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Add Action" })).toBeInTheDocument();
+
+    const listCall = server.seen.find(c => c.key === `GET /api/tickets/${TICKET_ID}/actions`);
+    expect(listCall?.init?.credentials).toBe("include");
+    expect(server.unknown).toEqual([]);
+  });
+
+  it("UI-06: Requester Ticket Detail renders the read-only card after the header and before Public Comments, with no controls in the DOM", async () => {
+    const actions = [
+      makeAction({ status: "IN_PROGRESS" }),
+      makeAction({ status: "COMPLETED", result: "Battery replaced.", followUpRequired: true, followUpNote: "Check again next week." }),
+    ];
+    const server = mockServer({
+      "GET /api/auth/me": { id: 31, name: "Jordan Requester", email: "jordan@example.com", role: "REQUESTER", mustChangePassword: false },
+      [`GET /api/tickets/${TICKET_ID}`]: ticketBase,
+      [`GET /api/tickets/${TICKET_ID}/comments`]: [],
+      [`GET /api/tickets/${TICKET_ID}/attachments`]: [],
+      [`GET /api/tickets/${TICKET_ID}/actions`]: actions,
+    });
+    render(
+      <MemoryRouter initialEntries={[`/tickets/${TICKET_ID}`]}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/tickets/:id" element={<RequesterTicketDetailScreen />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    const heading = await screen.findByRole("heading", { name: "Actions Taken by IT Staff (2)" });
+    await screen.findByRole("heading", { name: /Public Comments \(0\)/ });
+    const card = screen.getByTestId("actions-taken-card");
+    expect(card).toContainElement(heading);
+    expect(within(card).getAllByRole("button", { name: /View action from/ }).length).toBeGreaterThan(0);
+
+    const summary = screen.getByRole("heading", { level: 1, name: "Laptop battery drains quickly" });
+    const comments = screen.getByRole("heading", { name: /Public Comments/ });
+    expect(summary.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.compareDocumentPosition(comments) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // Not rendered at all, not merely disabled: on the page and inside an opened row.
+    const c = queryControls(document.body);
+    expect(screen.queryByRole("button", { name: "Add Action" })).toBeNull();
+    expect([c.edit, c.save, c.start, c.complete, c.cancel]).toEqual([null, null, null, null, null]);
+    await userEvent.setup().click(within(card).getAllByRole("button", { name: /View action from/ })[1]);
+    const dialog = await screen.findByRole("dialog", { name: "Action details" });
+    expect(within(dialog).getByText("Check again next week.")).toBeInTheDocument();
+    const d = queryControls(document.body);
+    expect([d.edit, d.save, d.start, d.complete, d.cancel]).toEqual([null, null, null, null, null]);
+    expect(screen.queryByText(/Internal Notes/)).toBeNull();
+
+    // A Requester never asks for staff-only data.
+    expect(server.seen.map(s => s.key)).not.toContain("GET /api/staff/users");
+    expect(server.seen.some(s => s.key.endsWith("/notes"))).toBe(false);
+    expect(server.unknown).toEqual([]);
+  });
+});
+
 // ── UI-02 and STYLE-03 ───────────────────────────────────────────────────
 
 describe("Action form validation", () => {
