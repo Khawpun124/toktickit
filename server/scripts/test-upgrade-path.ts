@@ -186,8 +186,10 @@ async function runUpgradePathTest() {
 
     // 8c: Compare Before vs After Ticket Ownership Matrix for ALL tickets
     console.log("\n  --- Ticket Ownership Migration Comparison Matrix ---");
+    // Select only Lab 1-3 columns: the database is in the Lab 3 state here, and the generated
+    // client would otherwise ask for the Lab 4 columns (version, resolvedAt, statusChangedAt).
     const afterTickets = await prisma.ticket.findMany({
-      include: { requester: true },
+      select: { ticketNumber: true, requester: { select: { email: true } } },
       orderBy: { ticketNumber: "asc" },
     });
 
