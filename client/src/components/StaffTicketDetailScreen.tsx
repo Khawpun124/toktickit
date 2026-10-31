@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
+import { ActionsTakenCard } from "./actions/ActionsTakenCard.js";
 import {
   getStaffTicketDetail,
   StaffTicketDetail,
@@ -502,6 +503,9 @@ export const StaffTicketDetailScreen: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* ── Actions Taken (Lab 4), always visible above the tabs ───────── */}
+          <ActionsTakenCard ticketId={ticket.id} ticketStatus={ticket.currentStatus} mode="staff" currentUser={user ?? undefined} />
 
           {/* ── Tabs ──────────────────────────────────────────────────────── */}
           <div className="card border-0 shadow-sm">
