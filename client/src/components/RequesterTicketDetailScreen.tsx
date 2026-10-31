@@ -22,6 +22,7 @@ import {
   MAX_REMOVAL_REASON_LENGTH,
 } from "../constants.js";
 import { useAuth } from "../context/AuthContext.js";
+import { ActionsTakenCard } from "./actions/ActionsTakenCard.js";
 
 interface RequesterTicketDetailScreenProps {
   ticketId?: number;
@@ -419,6 +420,9 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
           </div>
         </div>
       </div>
+
+      {/* Actions Taken by IT Staff (Lab 4), read-only */}
+      <ActionsTakenCard ticketId={ticket.id} ticketStatus={ticket.currentStatus} mode="requester" />
 
       {/* Public Comments Panel */}
       <div className="zg-card p-4 mb-4">
