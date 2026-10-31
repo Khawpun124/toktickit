@@ -11,6 +11,11 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "migrate:users": "tsx src/utils/migrate-users.ts",
     "db:reset": "tsx scripts/reset-db.ts",
+    "db:backup": "tsx scripts/lab4-backup.ts",
+    "db:snapshot": "tsx scripts/lab4-snapshot.ts",
+    "db:verify:lab4": "tsx scripts/lab4-verify.ts",
+    "db:backfill:lab4": "tsx scripts/lab4-backfill.ts",
+    "db:rollback:lab4": "tsx scripts/lab4-rollback.ts",
     "test": "vitest run"
   },
   "prisma": {

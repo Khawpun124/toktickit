@@ -20,15 +20,15 @@ Lab 1-3 clients and tests keep working.
 { "error": "Human-readable safe message", "code": "MACHINE_CODE", "fields": { "fieldName": "message" } }
 ```
 
-`code` and `fields` are present where noted. A 5xx never contains a stack trace, SQL,
-or a file path.
+`code` and `fields` are present where noted. A 5xx never contains a stack trace, SQL, or a file path. The `code` field is added by the Lab 4 endpoints. Existing Lab 1-3 endpoints keep their error bodies exactly as they are (existing tests assert them with `toEqual`), so a Lab 1-3 error has no `code` and the existing `error` texts and the 401, 403, 404, and 400 shapes of those endpoints do not change.
 
 - Check order (so results are predictable and testable):
   1. 401 not authenticated
   2. 403 `PASSWORD_CHANGE_REQUIRED`
   3. 403 role not allowed
-  4. 404 resource missing or not owned
-  5. 400 request-shape and field validation that does not need stored state
+    4. 404 resource missing or not owned
+  4a. Create Action only: replay. If `clientRequestId` is a valid UUID and the pair (current user, `clientRequestId`) already exists, answer now: 200 with the original Action when it belongs to the Ticket in the path, or 400 `VALIDATION_FAILED` on `clientRequestId` when it belongs to another Ticket. A replay is answered before body validation and before every state check (steps 5 and 6), even if this request's body would be invalid or the Ticket has since been resolved, because a retry must receive the answer the first request got. The lookup uses only the current user's own pairs, so another user's id never matches and nothing leaks.
+  5. 400 request-shape and field validation that does not need the stored Ticket or Action state (looking up the assignee user is part of this step, so an invalid assignee is a 400 even if the Ticket no longer accepts Actions)
   6. 409 `ACTION_TERMINAL`, `TICKET_NOT_ACCEPTING_ACTIONS`, `STALE_VERSION`,
      `OPEN_ACTIONS_BLOCK_RESOLUTION`
   7. 400 validation that depends on the stored state (for example a Result required to
@@ -192,7 +192,9 @@ Request (all fields except `expectedVersion` optional):
   Action's status only through that endpoint, with separate buttons (Start, Mark completed,
   Cancel action), never through Save in the edit dialog.
 - Turning `followUpRequired` off clears `followUpNote`.
-- A request with no changes returns 400 `VALIDATION_FAILED` ("No changes supplied").
+- A request with no changes returns 400 `VALIDATION_FAILED` ("No changes supplied"). A body with no editable field at all (only `expectedVersion`) is answered at step 5; a body whose values all equal the stored values needs the stored state, so it is answered at step 7, after the 409 checks.
+- `result` may be cleared with `null` or an empty string while the Action is not terminal; otherwise it must be 5-1000 characters.
+- If `followUpNote` is sent alone while the stored `followUpRequired` is false (and the body does not turn it on), the response is 400 `VALIDATION_FAILED` on `followUpNote` at step 7; if the body itself says `followUpRequired` is false, the note is dropped.
 
 Responses:
 - 200 with the updated Action (`version` increased by one).
@@ -421,5 +423,5 @@ endpoint above except the Lab 3 authentication endpoints.
 - No Lab 1-3 path, method, or request shape changes. New request fields (`expectedVersion`,
   `currentStatus` lists) are optional.
 - Responses only gain fields (`version`, `resolvedAt`, `openActionsCount`, `code`).
-- Existing `error` texts are unchanged so existing assertions still match.
+- Existing `error` texts are unchanged so existing assertions still match. Only the new Lab 4 endpoints add `code`; the error bodies of Lab 1-3 endpoints are not changed.
 - The earlier `X-Requester-Id` header stays removed, as decided in Lab 3.

@@ -389,15 +389,15 @@ Scripts (all under `server/`, run from the repository root with `npm run <name> 
 
 | Script | npm name | Purpose |
 |---|---|---|
-| `scripts/lab4-backup.ts` | `db:backup` | `pg_dump` through Docker into `backups/lab3-before-lab4-<UTC>.sql` |
-| `scripts/lab4-snapshot.ts` | `db:snapshot` | Row counts and per-row checksums of every Lab 1-3 table into `backups/snapshot-<UTC>.json` |
+| `scripts/lab4-backup.ts` | `db:backup` | `pg_dump` through Docker into `server/backups/lab3-before-lab4-<UTC>.sql`; stops without writing if the container's `POSTGRES_DB` differs from the database named in `DATABASE_URL` |
+| `scripts/lab4-snapshot.ts` | `db:snapshot` | Row counts and per-row checksums of every Lab 1-3 table except Session into `server/backups/snapshot-<UTC>.json` |
 | `scripts/lab4-verify.ts` | `db:verify:lab4` | Post-migration and post-rollback checks (below); exits non-zero on any failure |
 | `scripts/lab4-backfill.ts` | `db:backfill:lab4` | Runs only the idempotent backfill UPDATE and prints how many rows changed |
 | `scripts/lab4-rollback.ts` | `db:rollback:lab4` | Exports Actions Taken, then runs `prisma/rollback/lab4_down.sql` (needs `--confirm`) |
 | `prisma/rollback/lab4_down.sql` | | The reverse SQL, in one transaction |
 | `scripts/test-upgrade-path-lab4.ts` | | Automated proof of the whole procedure on a simulated Lab 3 database |
 
-The `backups/` folder is in `.gitignore` and is never committed.
+The `server/backups/` folder is in `.gitignore` and is never committed. Snapshot tables: Category, RequesterUser, RelatedSystem, User, Ticket, Attachment, PublicComment, InternalNote. `Session` is deliberately excluded: its rows change constantly and hold no business data (decision 12). The scripts run with `npm run <name> --prefix server`, which makes `server/` the working directory, so `--snapshot backups/snapshot-<UTC>.json` means `server/backups/...`; each script also prints the absolute path of the file it writes.
 
 Upgrade procedure (existing Lab 3 database)
 1. Stop the backend and any test runs.
@@ -409,8 +409,8 @@ Upgrade procedure (existing Lab 3 database)
 
 Checks run by `db:verify:lab4` after the upgrade (it prints a table of table, before, after, match):
 - ActionTaken exists and has 0 rows.
-- Every Lab 1-3 table has the same row count as the snapshot.
-- Every Lab 1-3 table has identical per-row checksums for its original columns.
+- Every Lab 1-3 table except Session has the same row count as the snapshot.
+- Every Lab 1-3 table except Session has identical per-row checksums for its original columns.
 - No Ticket has `version` other than 1.
 - No RESOLVED or CLOSED Ticket has `resolvedAt` NULL.
 - Every RESOLVED or CLOSED Ticket has `resolvedAt` equal to `updatedAt` (only with `--at-upgrade`).
@@ -422,8 +422,7 @@ If the migration fails midway
 - The file is one transaction, so a failure leaves no partial change. Confirm with
   `npm run db:verify:lab4 --prefix server -- --expect-absent`: ActionTaken, the enum, and the new
   Ticket columns must not exist.
-- Prisma records the failure and refuses to continue (error P3009). Read the error (it names the
-  statement), fix the cause, then run `npx prisma migrate resolve --rolled-back <migration_name>`.
+- Prisma records the migration as failed (its `_prisma_migrations` row keeps `finished_at` NULL and `logs` stays empty). The error it prints is only `25P02 current transaction is aborted`, which does not name the failing statement (observed in the upgrade test; the likely reason, that the file's own `BEGIN;` leaves Prisma's connection inside an aborted transaction, is inferred, not observed). To find the real error, run the migration file against a copy of the database with `psql -v ON_ERROR_STOP=1 -v VERBOSITY=verbose`; the first error it prints is the cause. Fix the cause, then run `npx prisma migrate resolve --rolled-back <migration_name>` and deploy again. The upgrade test (MIG-07) exercises exactly this sequence.
 - If verification still shows a partial state (it should not), stop and restore the backup
   (Rollback, option B), then investigate. The error and the fix are written in the PR.
 
@@ -445,17 +444,23 @@ Rollback and recovery
      go with it), the `ActionStatus` enum, the Lab 4 Ticket indexes, `Ticket.version`, `Ticket.resolvedAt`, and `Ticket.statusChangedAt`, and deletes the Lab 4 row from `_prisma_migrations` so the migration can be
      applied again later.
 - Option B, restore the backup (the whole database returns to the moment of the backup and
-  everything written after it is lost). With `POSTGRES_USER` and `POSTGRES_DB` set from `.env`:
+  everything written after it is lost). Inside the container `POSTGRES_USER` and `POSTGRES_DB` come from `.env`:
 
 ```bash
-docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < backups/lab3-before-lab4-<UTC>.sql
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -X -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < server/backups/lab3-before-lab4-<UTC>.sql
 ```
+
+  Run these from the repository root (the backup is in `server/backups/`). The single quotes make the
+  container's shell, not yours, expand `POSTGRES_USER` and `POSTGRES_DB`, so nothing needs to be set on
+  your machine. Phase 12 of the upgrade test automates the same drop-and-restore on the test
+  database with the database name passed explicitly; the two commands above are the manual form for the
+  main database and have not been run verbatim against it.
 
 Verifying that the original data came back
 - Run `npm run db:verify:lab4 --prefix server -- --snapshot backups/snapshot-<UTC>.json --after-rollback`.
   It passes only when ActionTaken, the enum, the Ticket columns, and the Lab 4 migration row are
-  gone, and every Lab 1-3 table matches the snapshot in row count and per-row checksums. It prints
+  gone, and every Lab 1-3 table except Session matches the snapshot in row count and per-row checksums. It prints
   the same before and after table.
 - Then run the Lab 3 server tests and the Lab 3 upgrade-path script as a smoke check, and apply
   the migration again to prove it can be re-applied.
@@ -554,7 +559,7 @@ owned, 409 conflict (`STALE_VERSION`, `OPEN_ACTIONS_BLOCK_RESOLUTION`,
 - AC-32: Given 500 seeded Tickets and their Actions, when the dashboards and Actions list are requested, then each responds within the smoke threshold of 1 second.
 - AC-33: Given the primary flows of every role, when they run end to end, then there are no console errors and no broken links.
 - AC-34: Given the migration fails midway, then no partial schema remains, and after the cause is fixed and `migrate resolve --rolled-back` is run, running the migration again succeeds.
-- AC-35: Given the rollback is run after a successful migration, then every Lab 1-3 table matches the pre-migration snapshot in row count and per-row checksums, the Lab 4 objects and migration record are gone, and the migration can be applied again.
+- AC-35: Given the rollback is run after a successful migration, then every Lab 1-3 table except Session matches the pre-migration snapshot in row count and per-row checksums, the Lab 4 objects and migration record are gone, and the migration can be applied again.
 - AC-36: Given a Ticket resolved exactly 30 x 24 hours before `generatedAt`, then it is included in "Recently resolved", and one resolved 1 ms earlier is excluded; the results are identical whatever the server process time zone is.
 - AC-37: Given an Action edit request that contains `status` or `ticketId`, then it is rejected with 400; given a status change, then it goes only through the status endpoint, used by the dedicated status buttons in the UI.
 - AC-38: Given several Tickets waiting for the Requester, when "Needs your attention" is retrieved, then they are ordered by time since entering WAITING_FOR_REQUESTER (longest first, ties by `id` ascending); a later comment, owner, priority, or other edit does not change the order, and a Ticket that leaves and re-enters Waiting is counted from the new entry.
@@ -611,3 +616,4 @@ The labsheet leaves these open. They are decisions to review before implementati
    dashboard cards with several statuses can link to a filtered list.
 10. Performance is a smoke check (1 second at 500 Tickets in CI), not a service-level target.
 11. "Longest waiting" is measured from a new `statusChangedAt` column (the last status transition), not from `updatedAt`, because any edit changes `updatedAt` and would make a Ticket look as if it had waited less. Existing Tickets are backfilled with `updatedAt` as the best available approximation.
+12. The snapshot, and therefore every "matches the snapshot" check, excludes the `Session` table: its rows change with every login and hold no business data. All other Lab 1-3 tables are covered.
