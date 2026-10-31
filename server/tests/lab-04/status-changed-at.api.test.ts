@@ -35,6 +35,8 @@ describe("API-43: statusChangedAt maintenance", () => {
     await fx.cleanup();
   });
 
+  // The Action created in the second test; it is completed before the Ticket is resolved (BR-17 gate).
+  let actionId = 0;
   const read = async () => (await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })).statusChangedAt.getTime();
   const staff = () => fx.users.staffA.cookie;
   const setStatus = (newStatus: string) =>
@@ -78,7 +80,6 @@ describe("API-43: statusChangedAt maintenance", () => {
     await expectUnchangedBy("internal note", () =>
       request(app).post(`/api/tickets/${ticketId}/notes`).set("Cookie", staff()).send({ content: "An internal note" }), 201);
 
-    let actionId = 0;
     await expectUnchangedBy("create Action", async () => {
       const r = await api.create(staff(), ticketId, { description: "Action that must not move the clock" });
       actionId = r.body.id;
@@ -95,6 +96,8 @@ describe("API-43: statusChangedAt maintenance", () => {
     await expectStatusChangeMovesClock("IN_PROGRESS");
     const secondWait = await expectStatusChangeMovesClock("WAITING_FOR_REQUESTER");
     expect(secondWait).toBeGreaterThan(firstWait);
+    await expectUnchangedBy("complete Action", () =>
+      api.status(staff(), actionId, { expectedVersion: 3, status: "COMPLETED", result: "Work finished before resolving" }), 200);
     await expectStatusChangeMovesClock("RESOLVED");
     await expectStatusChangeMovesClock("REOPENED");
   });

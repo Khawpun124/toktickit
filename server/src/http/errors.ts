@@ -15,6 +15,7 @@ export type ErrorCode =
   | "STALE_VERSION"
   | "TICKET_NOT_ACCEPTING_ACTIONS"
   | "ACTION_TERMINAL"
+  | "OPEN_ACTIONS_BLOCK_RESOLUTION"
   | "INTERNAL_ERROR";
 
 export type FieldErrors = Record<string, string>;

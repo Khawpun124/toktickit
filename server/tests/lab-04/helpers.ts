@@ -39,7 +39,8 @@ export async function login(email: string, password = TEST_PASSWORD): Promise<st
   return res.headers["set-cookie"]?.[0] ?? "";
 }
 
-export async function createFixture(tag: string): Promise<Fixture> {
+/** `emailPrefix` names the test users ("act" by default; the Issue 4 Ticket workflow tests use "ticketwf"). */
+export async function createFixture(tag: string, emailPrefix = "act"): Promise<Fixture> {
   const prisma = getPrisma();
   const runId = `${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const passwordHash = await hashPassword(TEST_PASSWORD);
@@ -48,7 +49,7 @@ export async function createFixture(tag: string): Promise<Fixture> {
 
   const users = {} as Record<UserKey, TestUser>;
   for (const [key, spec] of Object.entries(USER_SPECS) as Array<[UserKey, (typeof USER_SPECS)[UserKey]]>) {
-    const email = `act-${runId}-${key.toLowerCase()}@example.com`;
+    const email = `${emailPrefix}-${runId}-${key.toLowerCase()}@example.com`;
     const u = await prisma.user.create({
       data: { name: `Act ${key}`, email, passwordHash, ...spec },
     });
@@ -113,6 +114,22 @@ export const api = {
     request(app).patch(`/api/staff/actions/${actionId}`).set("Cookie", cookie).send(body),
   status: (cookie: string, actionId: number | string, body: Record<string, unknown>) =>
     request(app).patch(`/api/staff/actions/${actionId}/status`).set("Cookie", cookie).send(body),
+};
+
+// Ticket workflow endpoints (Lab 3 endpoints changed in Lab 4, api-spec section 6)
+export const ticketApi = {
+  status: (cookie: string, ticketId: number | string, body: Record<string, unknown>) =>
+    request(app).patch(`/api/staff/tickets/${ticketId}/status`).set("Cookie", cookie).send(body),
+  owner: (cookie: string, ticketId: number | string, body: Record<string, unknown>) =>
+    request(app).patch(`/api/staff/tickets/${ticketId}/owner`).set("Cookie", cookie).send(body),
+  priority: (cookie: string, ticketId: number | string, body: Record<string, unknown>) =>
+    request(app).patch(`/api/staff/tickets/${ticketId}/priority`).set("Cookie", cookie).send(body),
+  staffDetail: (cookie: string, ticketId: number | string) =>
+    request(app).get(`/api/staff/tickets/${ticketId}`).set("Cookie", cookie),
+  detail: (cookie: string, ticketId: number | string) =>
+    request(app).get(`/api/tickets/${ticketId}`).set("Cookie", cookie),
+  flag: (cookie: string, ticketId: number | string) =>
+    request(app).patch(`/api/tickets/${ticketId}/resolution-flag`).set("Cookie", cookie).send({}),
 };
 
 /** An id that no Ticket or Action has (larger than every existing one, within Int range). */

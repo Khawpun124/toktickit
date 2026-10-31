@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import app from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
-import { api, createFixture, missingId, TEST_PASSWORD, login, type Fixture } from "./helpers.js";
+import { api, createFixture, missingId, TEST_PASSWORD, login, ticketApi, type Fixture } from "./helpers.js";
 
 /** SEC-01, SEC-02, SEC-03, SEC-05 for the Actions Taken endpoints. */
 describe("Authorization of the Actions Taken endpoints (SEC-01, SEC-02, SEC-03, SEC-05)", () => {
@@ -92,5 +92,76 @@ describe("Authorization of the Actions Taken endpoints (SEC-01, SEC-02, SEC-03, 
     expect(none.headers["content-type"]).toBe(other.headers["content-type"]);
     // The owner still sees the list.
     expect((await api.list(fx.users.requesterA.cookie, ticketId)).status).toBe(200);
+  });
+});
+
+/**
+ * SEC-01, SEC-02, SEC-03 for the Ticket endpoints changed in Issue 4 (owner, priority, status).
+ * They were Lab 3 endpoints, so the 401 and 403 bodies are the Lab 3 bodies, without a code.
+ */
+describe("Authorization of the Ticket workflow endpoints (SEC-01, SEC-02, SEC-03)", () => {
+  const prisma = getPrisma();
+  let fx: Fixture;
+  let ticketId: number;
+
+  beforeAll(async () => {
+    fx = await createFixture("authz-ticket", "ticketwf");
+    ticketId = await fx.createTicket({ requester: "requesterA", status: "OPEN" });
+  });
+  afterAll(async () => {
+    await fx.cleanup();
+  });
+
+  const writes = () => [
+    { name: "PATCH /api/staff/tickets/:id/status", send: (c: string) => ticketApi.status(c, ticketId, { newStatus: "IN_PROGRESS" }) },
+    { name: "PATCH /api/staff/tickets/:id/owner", send: (c: string) => ticketApi.owner(c, ticketId, { ticketOwnerId: fx.users.staffA.id }) },
+    { name: "PATCH /api/staff/tickets/:id/priority", send: (c: string) => ticketApi.priority(c, ticketId, { itPriority: "HIGH" }) },
+  ];
+  const snapshot = () => prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+
+  it("SEC-01: every Ticket workflow endpoint as a Requester (even the Ticket's own Requester) gives 403 and changes nothing", async () => {
+    const before = await snapshot();
+    for (const w of writes()) {
+      for (const requester of [fx.users.requesterA, fx.users.requesterB]) {
+        const res = await w.send(requester.cookie);
+        expect(res.status, w.name).toBe(403);
+        expect(res.body, w.name).toEqual({ error: "Forbidden" });
+      }
+    }
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("SEC-02: every Ticket workflow endpoint without a session gives 401", async () => {
+    const before = await snapshot();
+    for (const w of writes()) {
+      for (const cookie of ["", "tk_session=not-a-real-session"]) {
+        const res = await w.send(cookie);
+        expect(res.status, `${w.name} ${cookie}`).toBe(401);
+        expect(res.body).toEqual({ error: "Unauthorized" });
+      }
+    }
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("SEC-03: a user who must change the initial password is blocked until the password is changed", async () => {
+    const user = fx.users.mustChangeStaff;
+    const before = await snapshot();
+    for (const w of writes()) {
+      const res = await w.send(user.cookie);
+      expect(res.status, w.name).toBe(403);
+      expect(res.body).toEqual({ error: "Password change required before accessing this resource" });
+    }
+    expect(await snapshot()).toEqual(before);
+
+    const newPassword = "ChangedPass456!";
+    const change = await request(app)
+      .post("/api/auth/change-password")
+      .set("Cookie", user.cookie)
+      .send({ currentPassword: TEST_PASSWORD, newPassword, confirmPassword: newPassword });
+    expect(change.status).toBe(200);
+    const cookie = await login(user.email, newPassword);
+    for (const w of writes()) {
+      expect((await w.send(cookie)).status, w.name).toBe(200);
+    }
   });
 });
