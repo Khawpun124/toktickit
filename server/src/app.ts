@@ -328,6 +328,7 @@ app.post("/api/auth/change-password", requireAuth, async (req: Request, res: Res
 // ---------------------------------------------------------------------------
 import { generateTicketNumber } from "./utils/ticket-number.js";
 import { Priority } from "@prisma/client";
+import type { Role } from "@prisma/client";
 
 app.post("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
   const requesterId = req.user!.id;
