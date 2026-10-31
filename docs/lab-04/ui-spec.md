@@ -46,15 +46,16 @@ Ticket status, Requested Priority, IT Priority, and role badges are unchanged fr
 
 - A user who opens the dashboard route of another role is redirected to their own
   dashboard with a notification ("You do not have access to that page."). Never a raw error.
-- After login (and after the mandatory password change) each role lands on its own dashboard.
+- After login (and after the mandatory password change) IT Staff and Administrators land on `/staff/dashboard`; a Requester lands on `/tickets` (My Tickets), as in Labs 2 and 3, and the same applies when a Requester opens `/`. The Requester Dashboard is one click away in the header. A user who opens a dashboard route of another role is still redirected to their own dashboard (`/dashboard` for a Requester).
 - Navigation per role, with a clear active-page indicator (underline or pill in
   `--zg-secondary`, plus `aria-current="page"`):
   - Requester: Dashboard, My Tickets, Create Ticket
   - IT Staff: Dashboard, My Queue, Create Ticket
   - Administrator: Dashboard, My Queue, Admin / User Management
 - The label "Admin / User Management" is kept exactly so earlier tests and screens still find it.
-- On mobile the same entries sit inside the existing hamburger menu, with the active entry
-  marked.
+- On mobile there is no hamburger menu (the app never had one, and the Lab 2 and Lab 3 end-to-end tests click the header buttons
+  directly at 375 px). The same entries stay in the header as buttons that wrap onto a second line on narrow screens, with the
+  active entry marked. The labels, including "+ Create Ticket" and "My Tickets", and the button role are unchanged.
 
 ## 4. IT Staff Dashboard (`/staff/dashboard`)
 

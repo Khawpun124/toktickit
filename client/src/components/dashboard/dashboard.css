@@ -1,0 +1,174 @@
+/* Lab 4 dashboards (ui-spec sections 2, 4, 5, 10, 11). Zen Green tokens only. */
+
+/* --zg-metric-value: 32 px, bold, --zg-text. --zg-metric-label: 14 px, medium, --zg-text at 80%. */
+:root {
+  --zg-metric-value-size: 32px;
+  --zg-metric-value-weight: 700;
+  --zg-metric-label-size: 14px;
+  --zg-metric-label-weight: 500;
+  --zg-metric-label: rgba(31, 42, 36, 0.8); /* --zg-text at 80% */
+}
+
+.zg-dashboard {
+  max-width: 1440px;
+}
+
+/* Metric cards: each card is one link */
+.zg-metric-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 359.98px) {
+  .zg-metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 768px) {
+  .zg-metric-grid--staff {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 992px) {
+  .zg-metric-grid--requester {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .zg-metric-grid--staff.zg-metric-grid--six {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.zg-metric-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 112px;
+  padding: 1rem;
+  background: var(--zg-surface);
+  border: 1px solid #dfe6e2;
+  border-left: 4px solid var(--zg-secondary);
+  border-radius: 0.5rem;
+  color: var(--zg-text);
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.zg-metric-card:hover {
+  background: var(--zg-pale);
+  color: var(--zg-text);
+}
+
+.zg-metric-card:focus-visible,
+.zg-dashboard a:focus-visible,
+.zg-dashboard button:focus-visible {
+  outline: 2px solid var(--zg-secondary);
+  outline-offset: 2px;
+}
+
+.zg-metric-label {
+  font-size: var(--zg-metric-label-size);
+  font-weight: var(--zg-metric-label-weight);
+  color: var(--zg-metric-label);
+  overflow-wrap: anywhere;
+}
+
+.zg-metric-value {
+  font-size: var(--zg-metric-value-size);
+  font-weight: var(--zg-metric-value-weight);
+  line-height: 1.1;
+  color: var(--zg-text);
+}
+
+.zg-metric-link {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--zg-secondary);
+}
+
+.zg-metric-card--skeleton {
+  border-left-color: #dfe6e2;
+}
+
+/* Lists */
+.zg-dash-list .list-group-item {
+  min-height: 44px;
+}
+
+.zg-dash-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  color: var(--zg-text);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.zg-dash-row:hover .zg-dash-summary {
+  text-decoration: underline;
+}
+
+.zg-dash-summary {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zg-dash-badge {
+  white-space: nowrap;
+}
+
+.zg-callout {
+  background: #fff8e8;
+  border-left: 4px solid var(--zg-warning);
+}
+
+.zg-quick-actions .btn {
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+}
+
+/* Status and priority badges: text always present, colour is never the only cue */
+.zg-status-badge {
+  background: #eef1ef;
+  color: #3f4b45;
+  border: 1px solid #c9d3cd;
+}
+
+.zg-priority-high {
+  background: #f3e9e9;
+  color: var(--zg-error);
+  border: 1px solid #e0c4c4;
+}
+
+.zg-priority-medium {
+  background: #fff4e0;
+  color: #8a5a00;
+  border: 1px solid #ecd6a8;
+}
+
+.zg-priority-low {
+  background: var(--zg-pale);
+  color: var(--zg-secondary);
+  border: 1px solid #c4e2d0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zg-dashboard .placeholder-glow .placeholder {
+    animation: none;
+  }
+}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ticketStatusLabel } from "../ticketWorkflow.js";
 import { useAuth } from "../context/AuthContext.js";
 import {
   getStaffTickets,
@@ -9,6 +10,11 @@ import {
   Category,
   StaffUserItem,
 } from "../api.js";
+
+// The single statuses the Status filter offers. A value from the URL that is not one of them (for
+// example a dashboard card's comma list) is shown as one extra option, so the filter in use is visible.
+const QUEUE_STATUS_VALUES = ["", "NEW", "OPEN", "IN_PROGRESS", "WAITING_FOR_REQUESTER", "RESOLVED", "CLOSED", "REOPENED", "CANCELLED"];
+const statusListLabel = (value: string) => value.split(",").map((s) => ticketStatusLabel(s.trim())).join(", ");
 
 export const StaffTicketQueueScreen: React.FC = () => {
   const { user } = useAuth();
@@ -21,20 +27,39 @@ export const StaffTicketQueueScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isForbidden, setIsForbidden] = useState(false);
 
+  // Lab 4: a dashboard card opens the Queue with its filter in the URL. The URL only sets the
+  // starting values; the Queue does not write its filters back to the URL.
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const fromUrl = (key: string) => searchParams.get(key) ?? "";
+
   // Filter States
-  const [search, setSearch] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [requestedPriority, setRequestedPriority] = useState("");
-  const [itPriority, setItPriority] = useState("");
-  const [currentStatus, setCurrentStatus] = useState("");
-  const [ticketOwnerId, setTicketOwnerId] = useState("");
+  const [search, setSearch] = useState(() => fromUrl("search"));
+  const [categoryId, setCategoryId] = useState(() => fromUrl("categoryId"));
+  const [requestedPriority, setRequestedPriority] = useState(() => fromUrl("requestedPriority"));
+  const [itPriority, setItPriority] = useState(() => fromUrl("itPriority"));
+  const [currentStatus, setCurrentStatus] = useState(() => fromUrl("currentStatus"));
+  const [ticketOwnerId, setTicketOwnerId] = useState(() => fromUrl("ticketOwnerId"));
 
   // Sort States
-  const [sortBy, setSortBy] = useState<"createdAt" | "ticketNumber" | "itPriority">("createdAt");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [sortBy, setSortBy] = useState<"createdAt" | "ticketNumber" | "itPriority">(() => {
+    const s = fromUrl("sortBy");
+    return s === "ticketNumber" || s === "itPriority" ? s : "createdAt";
+  });
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(() => (fromUrl("sortDir") === "asc" ? "asc" : "desc"));
 
   // Pagination States
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => {
+    const p = parseInt(fromUrl("page"), 10);
+    return Number.isInteger(p) && p > 0 ? p : 1;
+  });
+
+  // "Search Tickets" on the dashboard opens the Queue with the search box focused.
+  useEffect(() => {
+    if ((location.state as { focusSearch?: boolean } | null)?.focusSearch) {
+      document.getElementById("search")?.focus();
+    }
+  }, [location.state]);
   const [pageSize] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -320,6 +345,9 @@ export const StaffTicketQueueScreen: React.FC = () => {
                 <option value="CLOSED">Closed</option>
                 <option value="REOPENED">Reopened</option>
                 <option value="CANCELLED">Cancelled</option>
+                {currentStatus && !QUEUE_STATUS_VALUES.includes(currentStatus) && (
+                  <option value={currentStatus}>{statusListLabel(currentStatus)}</option>
+                )}
               </select>
             </div>
 
@@ -344,6 +372,11 @@ export const StaffTicketQueueScreen: React.FC = () => {
                     {s.name} ({s.role})
                   </option>
                 ))}
+                {ticketOwnerId && ticketOwnerId !== "unassigned" && !staffUsers.some((s) => String(s.id) === ticketOwnerId) && (
+                  <option value={ticketOwnerId}>
+                    {user && String(user.id) === ticketOwnerId ? `${user.name} (me)` : `User #${ticketOwnerId}`}
+                  </option>
+                )}
               </select>
             </div>
 
