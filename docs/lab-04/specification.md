@@ -93,7 +93,7 @@ it can be demonstrated end to end.
 - FR-15: Every actionable dashboard card or row shall open the matching filtered
   list or Ticket Detail.
 - FR-16: Navigation shall show a Dashboard entry per role with a clear active-page
-  indication, and each role shall land on its Dashboard after login.
+  indication, and IT Staff and Administrators shall land on the IT Staff Dashboard after login. A Requester keeps landing on My Tickets, as in Labs 2 and 3, and reaches the Requester Dashboard from the header.
 - FR-17: The Staff and Requester Ticket Detail screens shall show Actions Taken;
   the Staff screen shall offer only permitted status transitions and refresh the
   Ticket summary after a successful change.
@@ -307,7 +307,7 @@ See `docs/lab-04/ui-spec.md` for the full specification. Summary:
 - Navigation: each role gets a Dashboard entry with an active-page indicator.
   Requester: Dashboard, My Tickets, Create Ticket. IT Staff: Dashboard, My Queue,
   Create Ticket. Administrator: Dashboard, My Queue, Admin / User Management.
-  Each role lands on its Dashboard after login (and after the mandatory password change).
+  IT Staff and Administrators land on the IT Staff Dashboard after login (and after the mandatory password change), because the Lab 4 sheet calls it "a concise operational starting point". A Requester keeps landing on My Tickets, because the sheet asks for "role navigation ... remains correct", the Requester Dashboard is a summary that must not replace My Tickets, and the Lab 1 and Lab 2 tests that open the app as a Requester and expect My Tickets must stay valid unchanged.
 - Requester Dashboard: four metric cards (Open, Waiting for you, Resolved, Closed)
   with View all links, and lists for Needs your attention, Recently updated, and
   Recently resolved, plus quick actions. No duplication of the My Tickets table.
