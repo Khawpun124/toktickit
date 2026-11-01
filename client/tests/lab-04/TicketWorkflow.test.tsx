@@ -198,6 +198,21 @@ describe("Status-change confirmation (window.confirm)", () => {
     await screen.findByText(new RegExp(`Status changed from .* to ${to === "CLOSED" ? "Closed" : "Reopened"}\\.`));
   });
 
+  it("UI-09: the success message is the bottom toast (ui-spec section 9): class zg-toast, role status, the same text, no inline position", async () => {
+    const user = userEvent.setup();
+    mockServer({ ticket: staffTicket({ currentStatus: "RESOLVED" }), actions: [] });
+    await renderPage();
+
+    await user.selectOptions(statusSelect(), "CLOSED");
+    const message = await screen.findByText(/Status changed from Resolved to Closed\./);
+    const toast = message.closest(".zg-toast") as HTMLElement;
+    expect(toast).not.toBeNull();
+    expect(toast).toHaveAttribute("role", "status");
+    expect(toast).toHaveTextContent(/^✓ Status changed from Resolved to Closed\.$/);
+    expect(toast.style.position).toBe("");
+    expect(toast.getAttribute("style")).toBeNull();
+  });
+
   it.each([
     ["CLOSED", "REOPENED", "Change status from Closed to Reopened?"],
     ["IN_PROGRESS", "RESOLVED", "Change status from In Progress to Resolved?"],

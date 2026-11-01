@@ -384,9 +384,8 @@ export const StaffTicketDetailScreen: React.FC = () => {
       {/* Success flash (a polite live region) */}
       {successMsg && (
         <div
-          className="alert alert-success alert-dismissible py-2 shadow-sm mb-3"
+          className="alert alert-success alert-dismissible py-2 shadow-sm mb-3 zg-toast"
           role="status"
-          style={{ position: "sticky", top: 0, zIndex: 100 }}
         >
           ✓ {successMsg}
         </div>

@@ -97,3 +97,20 @@ body {
 .zg-text-muted-strong {
   color: var(--zg-muted-strong) !important;
 }
+
+/* Staff Ticket Detail success message (ui-spec section 9): a toast fixed to the bottom centre of the
+   viewport, above the phone's safe area. It never covers the headings at the top of the page and
+   never moves the page content. z-index 1045 is above page content and Bootstrap's sticky and fixed
+   layers (1020, 1030) and below the modal backdrop (1050), so an open dialog stays on top. Clicks
+   pass through to whatever is underneath. Text #0a3622 on #d1e7dd (Bootstrap alert-success): 10.35:1. */
+.zg-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 1045;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  margin: 0 !important;
+  pointer-events: none;
+}
