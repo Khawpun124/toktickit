@@ -1,6 +1,7 @@
 import { test as base, expect, type BrowserContext } from "@playwright/test";
 import { randomPassword, readPreparedSeed, type PreparedSeed, type Session } from "./env";
 import { changePasswordAndSignIn, expectOk } from "./http";
+import { recordUser } from "./standins";
 
 // Fixtures for the Lab 4 specs. Every test makes its own users (unique per spec, project, test,
 // and repeat) and its own Tickets through the API, using the prepared seed administrator. The seed
@@ -19,7 +20,15 @@ export interface Lab4Fixtures {
 
 let counter = 0;
 
+// Software rasterisation for the Lab 4 browser: with the default raster path the anti-aliased
+// edges of rounded corners can differ by a few pixels between runs, so a screenshot of the same
+// screen is not byte-identical. These flags apply to the Lab 4 specs only.
+const STABLE_RASTER = ["--disable-gpu", "--disable-partial-raster", "--disable-skia-runtime-opts"];
+
 export const test = base.extend<Lab4Fixtures, { seedWorker: PreparedSeed }>({
+  launchOptions: [async ({ launchOptions }, use) => {
+    await use({ ...launchOptions, args: [...(launchOptions.args ?? []), ...STABLE_RASTER] });
+  }, { scope: "worker" }],
   seedWorker: [async ({}, use) => { await use(readPreparedSeed()); }, { scope: "worker" }],
   seed: async ({ seedWorker }, use) => { await use(seedWorker); },
 
@@ -33,6 +42,7 @@ export const test = base.extend<Lab4Fixtures, { seedWorker: PreparedSeed }>({
         cookie: seed.users.admin.cookie,
         body: { name: label, email, role, isActive: true, initialPassword: initial },
       }, [201]);
+      recordUser(testInfo.testId, { name: label, email, role });
       return changePasswordAndSignIn(email, initial, randomPassword());
     });
   },

@@ -19,6 +19,18 @@ async function openStaffTicket(page: Page, id: number, actions: number) {
   await expect(card(page).getByRole("heading", { name: `Actions Taken (${actions})` })).toBeVisible();
 }
 
+/** Page (document) y of the two section headings, independent of the scroll position. */
+async function headingTops(page: Page): Promise<Record<string, number>> {
+  const tops: Record<string, number> = {};
+  for (const [name, heading] of [
+    ["Ticket Information", page.getByText("Ticket Information", { exact: true })],
+    ["Actions Taken", card(page).getByRole("heading", { name: /^Actions Taken/ })],
+  ] as const) {
+    tops[name] = await heading.evaluate(el => Math.round(el.getBoundingClientRect().top + window.scrollY));
+  }
+  return tops;
+}
+
 async function completeAction(page: Page, description: string, result: string) {
   await row(page, description).getByRole("button", { name: /View action from/ }).click();
   const details = page.getByRole("dialog", { name: "Action details" });
@@ -75,15 +87,30 @@ test.describe("Ticket resolution (E2E-03, E2E-04)", () => {
     await snap(page, testInfo, "ticket-workflow", "permitted-transitions");
 
     // Resolve: confirm, then the summary updates
+    const before = await headingTops(page);
     const question = answerNextConfirm(page, true);
     await statusSelect(page).selectOption("RESOLVED");
     expect(await question).toBe("Change status from In Progress to Resolved?");
-    await expect(page.getByRole("status").filter({ hasText: "Status changed from In Progress to Resolved." })).toBeVisible();
+    const done = page.getByRole("status").filter({ hasText: "Status changed from In Progress to Resolved." });
+    await expect(done).toBeVisible();
+    // ui-spec section 9: the message is a toast fixed to the bottom; it does not move the page
+    const toast = await done.evaluate(el => { const s = getComputedStyle(el); return { position: s.position, color: s.color, background: s.backgroundColor }; });
+    testInfo.annotations.push({ type: "success toast colours", description: `${toast.color} on ${toast.background}` });
+    expect.soft(toast.position, "success message position").toBe("fixed");
+    const whileShown = await headingTops(page);
+    // Resolving also replaces the Add Action button with a line of text, which changes the Actions
+    // Taken header; so only Ticket Information is compared with the state before the change.
+    expect.soft(whileShown["Ticket Information"], "Ticket Information y while the message shows, compared with before it").toBe(before["Ticket Information"]);
+    // The message is sticky and shows for 3 s: capture the viewport while it is still there
+    await snap(page, testInfo, "ticket-workflow", "success", { fullPage: false });
+    await expect(done, "the message was still showing after the screenshot").toBeVisible();
+    // The same page with and without the message: the headings must not move
+    await expect(done, "the message disappears by itself").toBeHidden();
+    expect(await headingTops(page), "heading positions while the message showed, compared with after it disappeared").toEqual(whileShown);
     const resolved = await expectOk("GET", `/api/staff/tickets/${ticket.id}`, { cookie: staff.cookie });
     expect(resolved.body.currentStatus).toBe("RESOLVED");
     expect(resolved.body.resolvedAt).not.toBeNull();
     await expectNoHorizontalScroll(page, "after Resolved");
-    await snap(page, testInfo, "ticket-workflow", "success");
 
     // AC-19: reopening resets the flag
     await statusSelect(page).selectOption("REOPENED");

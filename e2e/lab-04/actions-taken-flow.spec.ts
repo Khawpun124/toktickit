@@ -21,6 +21,21 @@ async function expectActionsLayout(page: Page, project: string) {
   await expect(page.getByTestId("actions-table-view")).toBeVisible({ visible: !mobile });
 }
 
+/**
+ * RESP-03 and RESP-04, desktop and tablet: the Actions table fits its card. Its box does not scroll
+ * sideways, and the first row's View button lies wholly inside the card.
+ */
+async function expectActionsTableFits(page: Page, project: string) {
+  if (project === "mobile") return; // mobile shows cards, checked by expectActionsLayout
+  const table = page.getByTestId("actions-table-view");
+  const size = await table.evaluate(el => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+  expect(size.scroll, `Actions table box: scrollWidth ${size.scroll} must not exceed clientWidth ${size.client}`).toBeLessThanOrEqual(size.client);
+  const cardBox = (await card(page).boundingBox())!;
+  const view = (await table.getByRole("button", { name: /View action from/ }).first().boundingBox())!;
+  expect(view.x, "View button left edge inside the card").toBeGreaterThanOrEqual(cardBox.x);
+  expect(view.x + view.width, `View button right edge ${view.x + view.width} inside the card (${cardBox.x + cardBox.width})`).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+}
+
 async function expectDialogFits(page: Page, name: string) {
   const box = await dialog(page, name).boundingBox();
   const width = page.viewportSize()!.width;
@@ -49,13 +64,14 @@ test.describe("Actions Taken flow (E2E-01, E2E-02, RESP-03, RESP-04)", () => {
     await dialog(page, "Add Action").getByLabel(/^Description/).fill("Check the docking station firmware version");
     await expectDialogFits(page, "Add Action");
     await expectNoHorizontalScroll(page, "Add Action dialog");
-    await snap(page, testInfo, "actions-taken", "create");
+    await snap(page, testInfo, "actions-taken", "create", { fullPage: false }); // dialog open: the viewport, as the user sees it
     await dialog(page, "Add Action").getByRole("button", { name: "Save" }).click();
     await expect(dialog(page, "Add Action")).toBeHidden();
     await expect(card(page).getByRole("status")).toHaveText("Action added.");
     await expect(card(page).getByRole("heading", { name: "Actions Taken (1)" })).toBeVisible();
     await expect(row(page, "Check the docking station firmware version")).toContainText("Planned");
     await expectActionsLayout(page, testInfo.project.name);
+    await expectActionsTableFits(page, testInfo.project.name);
     await expectNoHorizontalScroll(page, "Staff Ticket Detail with Actions");
     await snap(page, testInfo, "actions-taken", "list");
 
@@ -65,7 +81,7 @@ test.describe("Actions Taken flow (E2E-01, E2E-02, RESP-03, RESP-04)", () => {
     const edit = dialog(page, "Edit Action");
     await edit.getByLabel(/^Description/).fill("Update the docking station firmware to 2.4");
     await expectDialogFits(page, "Edit Action");
-    await snap(page, testInfo, "actions-taken", "edit");
+    await snap(page, testInfo, "actions-taken", "edit", { fullPage: false }); // dialog open: the viewport, as the user sees it
     await edit.getByRole("button", { name: "Save" }).click();
     await expect(edit).toBeHidden();
     await expect(card(page).getByRole("status")).toHaveText("Action saved.");
@@ -82,7 +98,7 @@ test.describe("Actions Taken flow (E2E-01, E2E-02, RESP-03, RESP-04)", () => {
     await expect(details.getByText("Completed and cancelled actions cannot be changed.")).toBeVisible();
     await expect(details.getByRole("button", { name: "Edit" })).toHaveCount(0);
     await expectDialogFits(page, "Action details");
-    await snap(page, testInfo, "actions-taken", "terminal");
+    await snap(page, testInfo, "actions-taken", "terminal", { fullPage: false }); // dialog open: the viewport, as the user sees it
     await details.getByText("Close", { exact: true }).click();
     await expect(row(page, "Update the docking station firmware to 2.4")).toContainText("Completed");
 
@@ -101,8 +117,12 @@ test.describe("Actions Taken flow (E2E-01, E2E-02, RESP-03, RESP-04)", () => {
       await expect(readOnly.getByRole("button", { name: control, exact: true }), `Requester has no ${control}`).toHaveCount(0);
     }
     await expectDialogFits(rpage, "Action details");
+    await readOnly.getByText("Close", { exact: true }).click();
+    await expectActionsTableFits(rpage, testInfo.project.name);
+    await row(rpage, "Update the docking station firmware to 2.4").getByRole("button", { name: /View action from/ }).click();
+    await expect(readOnly).toBeVisible();
     await expectNoHorizontalScroll(rpage, "Requester Ticket Detail");
-    await snap(rpage, testInfo, "actions-taken", "requester-readonly");
+    await snap(rpage, testInfo, "actions-taken", "requester-readonly", { fullPage: false }); // dialog open: the viewport, as the user sees it
 
     await staffContext.close();
     await requesterContext.close();
@@ -133,7 +153,7 @@ test.describe("Actions Taken flow (E2E-01, E2E-02, RESP-03, RESP-04)", () => {
     await expect(note).toHaveAttribute("aria-invalid", "true");
     await expect(add.getByText("A follow-up note is required when follow-up is needed.")).toBeVisible();
     expect(posts, "no request is sent while the form is invalid").toEqual([]);
-    await snap(pageA, testInfo, "actions-taken", "validation");
+    await snap(pageA, testInfo, "actions-taken", "validation", { fullPage: false }); // dialog open: the viewport, as the user sees it
     await add.getByRole("button", { name: "Cancel" }).click();
     await pageA.getByRole("dialog", { name: "Discard changes?" }).getByRole("button", { name: "Discard changes" }).click();
     await expect(add).toBeHidden();
@@ -161,7 +181,7 @@ test.describe("Actions Taken flow (E2E-01, E2E-02, RESP-03, RESP-04)", () => {
     await expect(editB.getByLabel(/^Description/)).toHaveValue("Reset the share ACL to the department default");
     await expect(editB.getByRole("button", { name: "Load latest version" })).toBeVisible();
     await expectDialogFits(pageB, "Edit Action");
-    await snap(pageB, testInfo, "actions-taken", "conflict");
+    await snap(pageB, testInfo, "actions-taken", "conflict", { fullPage: false }); // dialog open: the viewport, as the user sees it
 
     await contextA.close();
     await contextB.close();
