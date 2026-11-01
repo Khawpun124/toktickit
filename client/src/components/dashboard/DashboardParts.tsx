@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ticketStatusLabel } from "../../ticketWorkflow.js";
 import { formatClock } from "../../dashboard/formatTime.js";
@@ -8,16 +8,24 @@ import "./dashboard.css";
 
 export const firstName = (name?: string) => (name ?? "").trim().split(/\s+/)[0] || "there";
 
-/** A metric card: one link whose accessible name is label, value, and action. */
-export const MetricCard: React.FC<{ to: string; label: string; name: string; value: number; testId?: string }> = ({
-  to, label, name, value, testId,
-}) => (
-  <Link to={to} className="zg-metric-card" aria-label={`${name}: ${value}. View all`} data-testid={testId}>
-    <span className="zg-metric-label">{label}</span>
-    <span className="zg-metric-value">{value}</span>
-    <span className="zg-metric-link" aria-hidden="true">View all →</span>
-  </Link>
-);
+/**
+ * A metric card: one link whose accessible name is its visible text, label, value, and "View all"
+ * (WCAG 2.5.3, Label in Name; ui-spec sections 4 and 11). The arrow is hidden from assistive
+ * technology, and a visually hidden sentence linked with aria-describedby says what the link opens.
+ */
+export const MetricCard: React.FC<{ to: string; label: string; value: number; description: string; testId?: string }> = ({
+  to, label, value, description, testId,
+}) => {
+  const descriptionId = useId();
+  return (
+    <Link to={to} className="zg-metric-card" aria-describedby={descriptionId} data-testid={testId}>
+      <span className="zg-metric-label">{label}</span>{" "}
+      <span className="zg-metric-value">{value}</span>{" "}
+      <span className="zg-metric-link">View all<span aria-hidden="true"> →</span></span>
+      <span id={descriptionId} className="visually-hidden" aria-hidden="true">{description}</span>
+    </Link>
+  );
+};
 
 export const StatusBadge: React.FC<{ status: string }> = ({ status }) => (
   <span className="badge zg-status-badge zg-dash-badge" data-testid="status-badge">

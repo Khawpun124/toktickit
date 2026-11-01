@@ -10,12 +10,12 @@ import {
 
 const ACTIVE = "currentStatus=NEW,OPEN,IN_PROGRESS,WAITING_FOR_REQUESTER,REOPENED";
 const CARDS = [
-  { name: "Unassigned tickets: 7. View all", href: `/staff/tickets?ticketOwnerId=unassigned&${ACTIVE}` },
-  { name: "My assigned tickets: 4. View all", href: `/staff/tickets?ticketOwnerId=${STAFF.id}&${ACTIVE}` },
-  { name: "New tickets: 14. View all", href: "/staff/tickets?currentStatus=NEW" },
-  { name: "In Progress tickets: 18. View all", href: "/staff/tickets?currentStatus=IN_PROGRESS" },
-  { name: "Waiting for Requester tickets: 6. View all", href: "/staff/tickets?currentStatus=WAITING_FOR_REQUESTER" },
-  { name: "High IT Priority tickets: 3. View all", href: `/staff/tickets?itPriority=HIGH&${ACTIVE}` },
+  { name: "Unassigned 7 View all", description: "Opens My Queue filtered to unassigned active tickets.", href: `/staff/tickets?ticketOwnerId=unassigned&${ACTIVE}` },
+  { name: "My Assigned 4 View all", description: "Opens My Queue filtered to the active tickets you own.", href: `/staff/tickets?ticketOwnerId=${STAFF.id}&${ACTIVE}` },
+  { name: "New 14 View all", description: "Opens My Queue filtered to New tickets.", href: "/staff/tickets?currentStatus=NEW" },
+  { name: "In Progress 18 View all", description: "Opens My Queue filtered to In Progress tickets.", href: "/staff/tickets?currentStatus=IN_PROGRESS" },
+  { name: "Waiting for Requester 6 View all", description: "Opens My Queue filtered to tickets waiting for the requester.", href: "/staff/tickets?currentStatus=WAITING_FOR_REQUESTER" },
+  { name: "High IT Priority 3 View all", description: "Opens My Queue filtered to active tickets with High IT Priority.", href: `/staff/tickets?itPriority=HIGH&${ACTIVE}` },
 ];
 
 const cardsArea = () => screen.getByTestId("metric-cards");
@@ -71,7 +71,7 @@ describe("UI-11: Staff Dashboard states", () => {
     const links = within(await screen.findByTestId("metric-cards")).getAllByRole("link");
     expect(links).toHaveLength(6);
     for (const link of links) {
-      expect(link.getAttribute("aria-label")).toMatch(/: 0\. View all$/);
+      expect(link).toHaveAccessibleName(/ 0 View all$/);
       expect(link.getAttribute("href")).toMatch(/^\/staff\/tickets\?/);
     }
     expect(screen.getByText("You don't own any tickets yet.")).toBeInTheDocument();
@@ -112,6 +112,8 @@ describe("UI-12: Staff Dashboard links", () => {
       expect(link.tagName).toBe("A");
       expect(link).not.toHaveAttribute("role");
       expect(link).toHaveAttribute("href", c.href);
+      expect(link).not.toHaveAttribute("aria-label");
+      expect(link).toHaveAccessibleDescription(c.description);
     }
     expect(within(cardsArea()).queryAllByRole("button")).toHaveLength(0);
   });
@@ -120,7 +122,7 @@ describe("UI-12: Staff Dashboard links", () => {
     await openDashboard(ADMIN, {
       "GET /api/dashboard/staff": () => ({ status: 200, body: staffPayload({ users: { active: 11, inactive: 3 } }) }),
     });
-    const users = await screen.findByRole("link", { name: "Users: 11 active, 3 inactive. View all" });
+    const users = await screen.findByRole("link", { name: "Users 11 3 inactive View all" });
     expect(users).toHaveAttribute("href", "/admin/users");
     expect(within(cardsArea()).getAllByRole("link")).toHaveLength(7);
   });
@@ -185,7 +187,7 @@ describe("UI-17: Refresh", () => {
     const next = staffPayload({ generatedAt: "2026-10-12T11:45:00.000Z" });
     next.metrics.unassigned.count = 9;
     second.release({ status: 200, body: next });
-    expect(await screen.findByRole("link", { name: "Unassigned tickets: 9. View all" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Unassigned 9 View all" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh" })).not.toBeDisabled();
     expect(server.count("GET /api/dashboard/staff")).toBe(2);
     expect(screen.getByRole("heading", { level: 1 })).toBe(heading); // same page, not remounted
@@ -203,7 +205,7 @@ describe("UI-19: browser time zones", () => {
     const result = {
       updated: screen.getByTestId("dashboard-updated").textContent,
       times: Array.from(document.querySelectorAll(".zg-dash-row .text-muted")).map(el => el.textContent),
-      cards: within(cardsArea()).getAllByRole("link").map(l => l.getAttribute("aria-label")),
+      cards: within(cardsArea()).getAllByRole("link").map(l => l.textContent),
       urgent: rowIds("list-urgent"),
       recent: rowIds("list-my-recent"),
       actions: rowIds("list-my-actions", "data-action-id"),

@@ -7,14 +7,14 @@ import { expectNoHorizontalScroll, snap } from "./support/ui";
 // Staff card numbers count the whole system, which the other specs change, so every card is
 // compared with the total of the list its own link opens, never with a fixed number.
 
-const STAFF_CARDS = ["Unassigned tickets", "My assigned tickets", "New tickets", "In Progress tickets", "Waiting for Requester tickets", "High IT Priority tickets"];
-const REQUESTER_CARDS = ["Open tickets", "Tickets waiting for you", "Resolved tickets", "Closed tickets"];
+const STAFF_CARDS = ["Unassigned", "My Assigned", "New", "In Progress", "Waiting for Requester", "High IT Priority"];
+const REQUESTER_CARDS = ["Open", "Waiting for you", "Resolved", "Closed"];
 
-const cardLink = (page: Page, name: string) => page.getByRole("link", { name: new RegExp(`^${name}: \\d+\\. View all$`) });
+// A card's accessible name is its visible text: label, value, "View all" (ui-spec section 11).
+const cardLink = (page: Page, label: string) => page.getByRole("link", { name: new RegExp(`^${label} \\d+ View all$`) });
 
-async function cardCount(page: Page, name: string): Promise<number> {
-  const label = await cardLink(page, name).getAttribute("aria-label");
-  return Number(label!.match(/: (\d+)\. View all$/)![1]);
+async function cardCount(page: Page, label: string): Promise<number> {
+  return Number(await cardLink(page, label).locator(".zg-metric-value").textContent());
 }
 
 /** Opens a card and returns the total of the list request its link made. */
@@ -122,7 +122,7 @@ test.describe("Dashboards (E2E-05, RESP-01, RESP-02, RESP-04)", () => {
     // system, so they are not zero; the "My" cards and lists are.
     await page.goto("/staff/dashboard");
     await expect(page.getByTestId("metric-cards")).toBeVisible();
-    expect(await cardCount(page, "My assigned tickets")).toBe(0);
+    expect(await cardCount(page, "My Assigned")).toBe(0);
     await expect(page.getByText("You don't own any tickets yet.")).toBeVisible();
     await expect(page.getByText("No open actions are assigned to you.")).toBeVisible();
     await expectNoHorizontalScroll(page, "Staff Dashboard, no work assigned");

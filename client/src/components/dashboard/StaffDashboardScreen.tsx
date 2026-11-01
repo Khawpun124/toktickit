@@ -53,23 +53,26 @@ export const StaffDashboardScreen: React.FC = () => {
             className={`zg-metric-grid zg-metric-grid--staff ${data.users ? "" : "zg-metric-grid--six"} mb-4`}
             data-testid="metric-cards"
           >
-            <MetricCard to={queue(data.metrics.unassigned.query)} label="Unassigned" name="Unassigned tickets" value={data.metrics.unassigned.count} />
-            <MetricCard to={queue(data.metrics.myAssigned.query)} label="My Assigned" name="My assigned tickets" value={data.metrics.myAssigned.count} />
-            <MetricCard to={queue(data.metrics.new.query)} label="New" name="New tickets" value={data.metrics.new.count} />
-            <MetricCard to={queue(data.metrics.inProgress.query)} label="In Progress" name="In Progress tickets" value={data.metrics.inProgress.count} />
-            <MetricCard to={queue(data.metrics.waitingForRequester.query)} label="Waiting for Requester" name="Waiting for Requester tickets" value={data.metrics.waitingForRequester.count} />
-            <MetricCard to={queue(data.metrics.highPriority.query)} label="High IT Priority" name="High IT Priority tickets" value={data.metrics.highPriority.count} />
+            <MetricCard to={queue(data.metrics.unassigned.query)} label="Unassigned" description="Opens My Queue filtered to unassigned active tickets." value={data.metrics.unassigned.count} />
+            <MetricCard to={queue(data.metrics.myAssigned.query)} label="My Assigned" description="Opens My Queue filtered to the active tickets you own." value={data.metrics.myAssigned.count} />
+            <MetricCard to={queue(data.metrics.new.query)} label="New" description="Opens My Queue filtered to New tickets." value={data.metrics.new.count} />
+            <MetricCard to={queue(data.metrics.inProgress.query)} label="In Progress" description="Opens My Queue filtered to In Progress tickets." value={data.metrics.inProgress.count} />
+            <MetricCard to={queue(data.metrics.waitingForRequester.query)} label="Waiting for Requester" description="Opens My Queue filtered to tickets waiting for the requester." value={data.metrics.waitingForRequester.count} />
+            <MetricCard to={queue(data.metrics.highPriority.query)} label="High IT Priority" description="Opens My Queue filtered to active tickets with High IT Priority." value={data.metrics.highPriority.count} />
             {isAdmin && data.users && (
               <Link
                 to="/admin/users"
                 className="zg-metric-card"
-                aria-label={`Users: ${data.users.active} active, ${data.users.inactive} inactive. View all`}
+                aria-describedby="users-card-description"
                 data-testid="users-card"
               >
-                <span className="zg-metric-label">Users</span>
-                <span className="zg-metric-value">{data.users.active}</span>
-                <span className="small text-muted">{data.users.inactive} inactive</span>
-                <span className="zg-metric-link" aria-hidden="true">View all →</span>
+                <span className="zg-metric-label">Users</span>{" "}
+                <span className="zg-metric-value">{data.users.active}</span>{" "}
+                <span className="small text-muted">{data.users.inactive} inactive</span>{" "}
+                <span className="zg-metric-link">View all<span aria-hidden="true"> →</span></span>
+                <span id="users-card-description" className="visually-hidden" aria-hidden="true">
+                  {data.users.active} active users. Opens User Management.
+                </span>
               </Link>
             )}
           </div>
