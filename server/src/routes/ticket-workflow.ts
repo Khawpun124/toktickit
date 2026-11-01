@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { getPrisma } from "../prisma.js";
 import { requireAuth, requirePasswordChanged } from "../middleware/auth.js";
 import { sendError, validationFailed } from "../http/errors.js";
+import { logServerError } from "../http/log.js";
 import {
   changeTicketStatus, readExpectedVersion, updateTicketFields, type WorkflowOutcome,
 } from "../tickets/workflow.js";
@@ -53,7 +54,7 @@ function sendOutcome(res: Response, outcome: WorkflowOutcome): void {
       });
       return;
     case "invalidTransition":
-      sendError(res, 400, "INVALID_TRANSITION", "Invalid status transition", { from: outcome.from, to: outcome.to });
+      sendError(res, 400, "INVALID_TRANSITION", "Invalid status transition", { from: outcome.from, to: String(outcome.to) });
       return;
     case "gate":
       sendError(
@@ -90,6 +91,7 @@ ticketWorkflowRouter.patch("/api/staff/tickets/:id/owner", requireAuth, requireP
 
     sendOutcome(res, await updateTicketFields(ticketId, { ticketOwnerId: ticketOwnerId ?? null }, expected.value));
   } catch (error) {
+    logServerError(error, req);
     res.status(500).json({ error: "Unable to update ticket owner" });
   }
 });
@@ -110,6 +112,7 @@ ticketWorkflowRouter.patch("/api/staff/tickets/:id/priority", requireAuth, requi
 
     sendOutcome(res, await updateTicketFields(ticketId, { itPriority: itPriority as "LOW" | "MEDIUM" | "HIGH" }, expected.value));
   } catch (error) {
+    logServerError(error, req);
     res.status(500).json({ error: "Unable to update IT priority" });
   }
 });
@@ -131,6 +134,7 @@ ticketWorkflowRouter.patch("/api/staff/tickets/:id/status", requireAuth, require
 
     sendOutcome(res, await changeTicketStatus(ticketId, newStatus, expected.value));
   } catch (error) {
+    logServerError(error, req);
     res.status(500).json({ error: "Unable to update ticket status" });
   }
 });

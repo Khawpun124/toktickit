@@ -52,6 +52,8 @@ export const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+// Lab 4: readiness is public and checked before the session lookup (src/routes/health.ts)
+app.use(healthRouter);
 app.use(attachUserSession);
 
 
@@ -330,7 +332,7 @@ import { generateTicketNumber } from "./utils/ticket-number.js";
 import { Priority } from "@prisma/client";
 import type { Role } from "@prisma/client";
 
-app.post("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+app.post("/api/tickets", requireAuth, requirePasswordChanged, forwardRejections(async (req: Request, res: Response) => {
   const requesterId = req.user!.id;
 
   const { categoryId, relatedSystemId, summary, description, requestedPriority } = req.body ?? {};
@@ -441,7 +443,7 @@ app.post("/api/tickets", requireAuth, requirePasswordChanged, async (req: Reques
     updatedAt: ticket.updatedAt.toISOString(),
     attachmentUploadErrors: [],
   });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // Lab 2 Issue 4 — My Tickets List
@@ -630,7 +632,7 @@ app.get("/api/tickets/:id", requireAuth, requirePasswordChanged, async (req: Req
 });
 
 // 7. POST /api/tickets/:id/attachments -> Upload an Attachment to an owned Ticket (BR-21, BR-22, BR-23, BR-26)
-app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, forwardRejections(async (req: Request, res: Response) => {
   const requesterId = req.user!.id;
 
   const parsedTicketId = parseInt(req.params.id, 10);
@@ -726,7 +728,7 @@ app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, as
       }
     }
   });
-});
+}));
 
 // 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket (or IT Staff/Admin)
 app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
@@ -1637,6 +1639,13 @@ app.use(ticketWorkflowRouter);
 import { dashboardRouter } from "./routes/dashboard.js";
 import { parseStatusFilter } from "./tickets/status-filter.js";
 app.use(dashboardRouter);
+
+// Lab 4 app-level safe errors (src/http/app-errors.ts): unknown /api paths, then every error that
+// reached next(). Installed last so they only answer what no endpoint answered.
+import { healthRouter } from "./routes/health.js";
+import { apiNotFound, appErrorHandler, forwardRejections } from "./http/app-errors.js";
+app.use("/api", apiNotFound);
+app.use(appErrorHandler);
 
 export default app;
 
