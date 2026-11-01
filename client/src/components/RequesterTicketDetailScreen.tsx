@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useDialogFocus } from "./useDialogFocus.js";
 import {
   getTicket,
   getAttachments,
   uploadAttachment,
   deleteAttachment,
   downloadAttachment,
-  downloadAttachmentUrl,
   getPublicComments,
   postPublicComment,
   updateResolutionFlag,
@@ -22,6 +22,7 @@ import {
   MAX_REMOVAL_REASON_LENGTH,
 } from "../constants.js";
 import { useAuth } from "../context/AuthContext.js";
+import { ActionsTakenCard } from "./actions/ActionsTakenCard.js";
 
 interface RequesterTicketDetailScreenProps {
   ticketId?: number;
@@ -99,6 +100,14 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   const [submittingComment, setSubmittingComment] = useState<boolean>(false);
   const [showResolveModal, setShowResolveModal] = useState<boolean>(false);
   const [updatingResolution, setUpdatingResolution] = useState<boolean>(false);
+  // A failed confirmation is shown inside the dialog (not a blocking window.alert).
+  const [resolveError, setResolveError] = useState<string>("");
+
+  // BR-35: both confirmation dialogs trap focus, close with Escape, and return focus to their opener.
+  const removeDialogRef = useRef<HTMLDivElement>(null);
+  const resolveDialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(removeDialogRef, { active: !!removeTarget, onClose: () => setRemoveTarget(null), canClose: !removing, initialFocus: "#removeReasonInput" });
+  useDialogFocus(resolveDialogRef, { active: showResolveModal, onClose: () => setShowResolveModal(false), canClose: !updatingResolution });
 
   const handleDownloadAttachment = async (att: AttachmentItem) => {
     if (downloadingRef.current === att.id) return;
@@ -156,12 +165,13 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
   const handleConfirmResolve = async () => {
     if (!ticket) return;
     setUpdatingResolution(true);
+    setResolveError("");
     try {
       await updateResolutionFlag(activeTicketId);
       setTicket((prev) => (prev ? { ...prev, problemAppearsResolved: true } : prev));
       setShowResolveModal(false);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to update resolution flag");
+      setResolveError(err instanceof Error ? err.message : "Failed to update resolution flag");
     } finally {
       setUpdatingResolution(false);
     }
@@ -195,7 +205,6 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
 
 
   const activeAttachments = attachments.filter((att) => att.removedAt === null);
-  const removedAttachments = attachments.filter((att) => att.removedAt !== null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -348,7 +357,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
                 <button
                   type="button"
                   className="btn btn-outline-success btn-sm px-3"
-                  onClick={() => setShowResolveModal(true)}
+                  onClick={() => { setResolveError(""); setShowResolveModal(true); }}
                 >
                   Mark problem as resolved
                 </button>
@@ -400,7 +409,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
               )}
               {ticket.itPriority === "LOW" && <span className="badge bg-secondary">🟢 Low</span>}
               {!ticket.itPriority && (
-                <span className="badge bg-light text-muted border opacity-75">
+                <span className="badge bg-light zg-text-muted-strong border">
                   Not yet assigned
                 </span>
               )}
@@ -419,6 +428,9 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
           </div>
         </div>
       </div>
+
+      {/* Actions Taken by IT Staff (Lab 4), read-only */}
+      <ActionsTakenCard ticketId={ticket.id} ticketStatus={ticket.currentStatus} mode="requester" />
 
       {/* Public Comments Panel */}
       <div className="zg-card p-4 mb-4">
@@ -601,11 +613,13 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
           style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="remove-attachment-title"
+          ref={removeDialogRef}
         >
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title h6">Remove Attachment</h5>
+                <h5 className="modal-title h6" id="remove-attachment-title">Remove Attachment</h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -671,11 +685,13 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
           style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="resolve-problem-title"
+          ref={resolveDialogRef}
         >
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title h6">Mark Problem as Resolved</h5>
+                <h5 className="modal-title h6" id="resolve-problem-title">Mark Problem as Resolved</h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -689,6 +705,11 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
                 <p className="small mb-0">
                   Are you sure you want to mark this problem as resolved? This indicates to IT Staff that your issue appears resolved, but it does not formally close or cancel the ticket.
                 </p>
+                {resolveError && (
+                  <div className="alert alert-danger py-2 small mt-3 mb-0" role="alert">
+                    {resolveError}
+                  </div>
+                )}
               </div>
 
               <div className="modal-footer">

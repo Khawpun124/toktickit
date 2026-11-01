@@ -52,6 +52,8 @@ export const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+// Lab 4: readiness is public and checked before the session lookup (src/routes/health.ts)
+app.use(healthRouter);
 app.use(attachUserSession);
 
 
@@ -328,8 +330,9 @@ app.post("/api/auth/change-password", requireAuth, async (req: Request, res: Res
 // ---------------------------------------------------------------------------
 import { generateTicketNumber } from "./utils/ticket-number.js";
 import { Priority } from "@prisma/client";
+import type { Role } from "@prisma/client";
 
-app.post("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+app.post("/api/tickets", requireAuth, requirePasswordChanged, forwardRejections(async (req: Request, res: Response) => {
   const requesterId = req.user!.id;
 
   const { categoryId, relatedSystemId, summary, description, requestedPriority } = req.body ?? {};
@@ -440,7 +443,7 @@ app.post("/api/tickets", requireAuth, requirePasswordChanged, async (req: Reques
     updatedAt: ticket.updatedAt.toISOString(),
     attachmentUploadErrors: [],
   });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // Lab 2 Issue 4 — My Tickets List
@@ -494,15 +497,10 @@ app.get("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request
     whereClause.itPriority = itPriority;
   }
 
-  // Current status filter
-  const validStatuses = ["NEW"];
-  if (currentStatus !== undefined && currentStatus !== "") {
-    if (typeof currentStatus !== "string" || !validStatuses.includes(currentStatus)) {
-      res.status(400).json({ error: "Invalid currentStatus. Allowed values: NEW" });
-      return;
-    }
-    whereClause.currentStatus = currentStatus;
-  }
+  // Current status filter: one status or a comma list (Lab 4 api-spec section 7)
+  const statusFilter = parseStatusFilter(currentStatus, res);
+  if (!statusFilter.ok) return;
+  if (statusFilter.where) whereClause.currentStatus = statusFilter.where;
 
   // Search filter (ticketNumber partial or summary case-insensitive partial)
   if (search && typeof search === "string" && search.trim() !== "") {
@@ -626,6 +624,7 @@ app.get("/api/tickets/:id", requireAuth, requirePasswordChanged, async (req: Req
       currentStatus: ticket.currentStatus,
       createdAt: ticket.createdAt.toISOString(),
       updatedAt: ticket.updatedAt.toISOString(),
+      ...workflowFields(ticket),
     });
   } catch (error) {
     res.status(500).json({ error: "Unable to load ticket details" });
@@ -633,7 +632,7 @@ app.get("/api/tickets/:id", requireAuth, requirePasswordChanged, async (req: Req
 });
 
 // 7. POST /api/tickets/:id/attachments -> Upload an Attachment to an owned Ticket (BR-21, BR-22, BR-23, BR-26)
-app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
+app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, forwardRejections(async (req: Request, res: Response) => {
   const requesterId = req.user!.id;
 
   const parsedTicketId = parseInt(req.params.id, 10);
@@ -655,6 +654,11 @@ app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, as
     let success = false;
 
     try {
+      // multer stops at 10 MB and leaves no req.file; report it as the size limit, not as a missing file.
+      if (err?.code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ error: "File exceeds the 5 MB limit" });
+        return;
+      }
       const file = req.file;
       if (!file) {
         res.status(400).json({ error: "No file uploaded" });
@@ -729,7 +733,7 @@ app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, as
       }
     }
   });
-});
+}));
 
 // 8. GET /api/tickets/:id/attachments -> List attachment metadata for an owned Ticket (or IT Staff/Admin)
 app.get("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
@@ -916,7 +920,8 @@ app.patch("/api/tickets/:id/resolution-flag", requireAuth, requirePasswordChange
 
     const updated = await prisma.ticket.update({
       where: { id: parsedTicketId },
-      data: { problemAppearsResolved: true },
+      // BR-22: every successful update of a Ticket increments its version (the flag stays advisory, BR-20).
+      data: { problemAppearsResolved: true, version: { increment: 1 } },
     });
 
     res.status(200).json({
@@ -1086,27 +1091,10 @@ app.get("/api/staff/tickets", requireAuth, requirePasswordChanged, async (req: R
     whereClause.itPriority = itPriority;
   }
 
-  // Current Status filter
-  const validStatuses = [
-    "NEW",
-    "OPEN",
-    "IN_PROGRESS",
-    "WAITING_FOR_REQUESTER",
-    "RESOLVED",
-    "CLOSED",
-    "REOPENED",
-    "CANCELLED",
-  ];
-  if (currentStatus !== undefined && currentStatus !== null && (currentStatus as string).trim() !== "") {
-    const trimmedStatus = (currentStatus as string).trim();
-    if (!validStatuses.includes(trimmedStatus)) {
-      res.status(400).json({
-        error: `Invalid currentStatus. Allowed values: ${validStatuses.join(", ")}`,
-      });
-      return;
-    }
-    whereClause.currentStatus = trimmedStatus;
-  }
+  // Current Status filter: one status or a comma list (Lab 4 api-spec section 7)
+  const statusFilter = parseStatusFilter(currentStatus, res);
+  if (!statusFilter.ok) return;
+  if (statusFilter.where) whereClause.currentStatus = statusFilter.where;
 
   // Ticket Owner filter ("unassigned" or numeric staff ID)
   if (ticketOwnerId !== undefined && ticketOwnerId !== null && ticketOwnerId !== "") {
@@ -1257,6 +1245,8 @@ app.get("/api/staff/tickets/:id", requireAuth, requirePasswordChanged, async (re
       ticketOwnerName: ticket.ticketOwner ? ticket.ticketOwner.name : null,
       createdAt: ticket.createdAt.toISOString(),
       updatedAt: ticket.updatedAt.toISOString(),
+      ...workflowFields(ticket),
+      openActionsCount: await countOpenActions(prisma, ticket.id),
     });
   } catch (error) {
     res.status(500).json({ error: "Unable to load staff ticket detail" });
@@ -1296,165 +1286,8 @@ app.get("/api/staff/users", requireAuth, requirePasswordChanged, async (req: Req
 // Issue 5 — IT Staff Ticket Operations (Endpoints 13–15, 17)
 // ---------------------------------------------------------------------------
 
-/** Status Transition Matrix (BR-11). Key = from, Value = allowed "to" states. */
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  NEW: ["OPEN", "CANCELLED"],
-  OPEN: ["IN_PROGRESS", "CANCELLED"],
-  IN_PROGRESS: ["WAITING_FOR_REQUESTER", "RESOLVED", "CANCELLED"],
-  WAITING_FOR_REQUESTER: ["IN_PROGRESS", "RESOLVED", "CANCELLED"],
-  RESOLVED: ["CLOSED", "REOPENED"],
-  CLOSED: ["REOPENED"],
-  REOPENED: ["OPEN"],
-  CANCELLED: [],
-};
-
-// Endpoint 13 — PATCH /api/staff/tickets/:id/owner (BR-08, BR-09)
-app.patch("/api/staff/tickets/:id/owner", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
-  if (req.user!.role === "REQUESTER") {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-
-  const parsedTicketId = parseInt(req.params.id, 10);
-  if (isNaN(parsedTicketId)) {
-    res.status(404).json({ error: "Ticket not found" });
-    return;
-  }
-
-  const { ticketOwnerId } = req.body as { ticketOwnerId: number | null };
-
-  try {
-    const prisma = getPrisma();
-
-    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
-    if (!ticket) {
-      res.status(404).json({ error: "Ticket not found" });
-      return;
-    }
-
-    // null = unassign
-    if (ticketOwnerId !== null && ticketOwnerId !== undefined) {
-      const targetUser = await prisma.user.findUnique({ where: { id: ticketOwnerId } });
-      if (!targetUser || !targetUser.isActive || (targetUser.role !== "IT_STAFF" && targetUser.role !== "ADMINISTRATOR")) {
-        res.status(400).json({ error: "Target user is not an active IT Staff or Administrator" });
-        return;
-      }
-    }
-
-    const updated = await prisma.ticket.update({
-      where: { id: parsedTicketId },
-      data: { ticketOwnerId: ticketOwnerId ?? null },
-      include: {
-        ticketOwner: { select: { id: true, name: true, email: true } },
-      },
-    });
-
-    res.status(200).json({
-      id: updated.id,
-      ticketOwnerId: updated.ticketOwnerId,
-      ticketOwnerName: updated.ticketOwner ? updated.ticketOwner.name : null,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Unable to update ticket owner" });
-  }
-});
-
-// Endpoint 14 — PATCH /api/staff/tickets/:id/priority (BR-10)
-app.patch("/api/staff/tickets/:id/priority", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
-  if (req.user!.role === "REQUESTER") {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-
-  const parsedTicketId = parseInt(req.params.id, 10);
-  if (isNaN(parsedTicketId)) {
-    res.status(404).json({ error: "Ticket not found" });
-    return;
-  }
-
-  const { itPriority } = req.body as { itPriority: string };
-  const validPriorities = ["LOW", "MEDIUM", "HIGH"];
-  if (!itPriority || !validPriorities.includes(itPriority)) {
-    res.status(400).json({ error: "Invalid priority value. Must be LOW, MEDIUM, or HIGH." });
-    return;
-  }
-
-  try {
-    const prisma = getPrisma();
-
-    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
-    if (!ticket) {
-      res.status(404).json({ error: "Ticket not found" });
-      return;
-    }
-
-    const updated = await prisma.ticket.update({
-      where: { id: parsedTicketId },
-      data: { itPriority: itPriority as "LOW" | "MEDIUM" | "HIGH" },
-    });
-
-    res.status(200).json({
-      id: updated.id,
-      itPriority: updated.itPriority,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Unable to update IT priority" });
-  }
-});
-
-// Endpoint 15 — PATCH /api/staff/tickets/:id/status (BR-11)
-app.patch("/api/staff/tickets/:id/status", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
-  if (req.user!.role === "REQUESTER") {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-
-  const parsedTicketId = parseInt(req.params.id, 10);
-  if (isNaN(parsedTicketId)) {
-    res.status(404).json({ error: "Ticket not found" });
-    return;
-  }
-
-  const { newStatus } = req.body as { newStatus: string };
-  if (!newStatus) {
-    res.status(400).json({ error: "newStatus is required" });
-    return;
-  }
-
-  try {
-    const prisma = getPrisma();
-
-    const ticket = await prisma.ticket.findUnique({ where: { id: parsedTicketId } });
-    if (!ticket) {
-      res.status(404).json({ error: "Ticket not found" });
-      return;
-    }
-
-    const fromStatus = ticket.currentStatus;
-    const allowedTargets = ALLOWED_TRANSITIONS[fromStatus] ?? [];
-
-    if (!allowedTargets.includes(newStatus)) {
-      res.status(400).json({
-        error: "Invalid status transition",
-        from: fromStatus,
-        to: newStatus,
-      });
-      return;
-    }
-
-    const updated = await prisma.ticket.update({
-      where: { id: parsedTicketId },
-      data: { currentStatus: newStatus as any },
-    });
-
-    res.status(200).json({
-      id: updated.id,
-      currentStatus: updated.currentStatus,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Unable to update ticket status" });
-  }
-});
+// Endpoints 13-15 (owner, IT Priority, status) moved to src/routes/ticket-workflow.ts for Lab 4
+// (version, resolution gate, cancel cascade); the status matrix is in src/tickets/transitions.ts.
 
 // Endpoint 17 — POST /api/tickets/:id/notes (Internal Notes, BR-14)
 app.post("/api/tickets/:id/notes", requireAuth, requirePasswordChanged, async (req: Request, res: Response) => {
@@ -1797,6 +1630,27 @@ app.post("/api/admin/users/:id/reset-password", requireAuth, requirePasswordChan
     res.status(500).json({ error: "Unable to reset password" });
   }
 });
+
+// Lab 4 Actions Taken endpoints (src/routes/actions.ts)
+import { actionsRouter } from "./routes/actions.js";
+app.use(actionsRouter);
+
+// Lab 4 Ticket workflow: owner, IT Priority, and status endpoints (src/routes/ticket-workflow.ts)
+import { ticketWorkflowRouter } from "./routes/ticket-workflow.js";
+import { countOpenActions, workflowFields } from "./tickets/header.js";
+app.use(ticketWorkflowRouter);
+
+// Lab 4 dashboards (src/routes/dashboard.ts) and the currentStatus list filter used above
+import { dashboardRouter } from "./routes/dashboard.js";
+import { parseStatusFilter } from "./tickets/status-filter.js";
+app.use(dashboardRouter);
+
+// Lab 4 app-level safe errors (src/http/app-errors.ts): unknown /api paths, then every error that
+// reached next(). Installed last so they only answer what no endpoint answered.
+import { healthRouter } from "./routes/health.js";
+import { apiNotFound, appErrorHandler, forwardRejections } from "./http/app-errors.js";
+app.use("/api", apiNotFound);
+app.use(appErrorHandler);
 
 export default app;
 

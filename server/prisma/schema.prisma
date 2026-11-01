@@ -17,20 +17,23 @@ enum Role {
 }
 
 model User {
-  id                 Int            @id @default(autoincrement())
+  id                 Int             @id @default(autoincrement())
   name               String
-  email              String         @unique
+  email              String          @unique
   passwordHash       String
   role               Role
-  isActive           Boolean        @default(true)
-  mustChangePassword Boolean        @default(true)
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  tickets            Ticket[]       @relation("TicketRequester")
-  ownedTickets       Ticket[]       @relation("TicketOwner")
+  isActive           Boolean         @default(true)
+  mustChangePassword Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  tickets            Ticket[]        @relation("TicketRequester")
+  ownedTickets       Ticket[]        @relation("TicketOwner")
   sessions           Session[]
   publicComments     PublicComment[]
   internalNotes      InternalNote[]
+  // Lab 4 back-relations for ActionTaken
+  performedActions   ActionTaken[]   @relation("ActionPerformedBy")
+  assignedActions    ActionTaken[]   @relation("ActionAssignee")
 }
 
 model Session {
@@ -113,14 +116,24 @@ model Ticket {
   itPriority             Priority?
   currentStatus          TicketStatus  @default(NEW)
   problemAppearsResolved Boolean       @default(false)
+  // Lab 4 fields (additive — no existing columns removed)
+  version                Int           @default(1)
+  resolvedAt             DateTime?
+  statusChangedAt        DateTime      @default(now())
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   attachments            Attachment[]
   publicComments         PublicComment[]
   internalNotes          InternalNote[]
+  actionsTaken           ActionTaken[]
 
+  // Existing single-column indexes (Lab 1-3, kept as-is)
   @@index([requesterId])
   @@index([ticketOwnerId])
+  // Lab 4 composite indexes for dashboard counts and drill-down lists
+  @@index([requesterId, currentStatus])
+  @@index([ticketOwnerId, currentStatus])
+  @@index([currentStatus])
 }
 
 // ---------------------------------------------------------------------------
@@ -172,4 +185,44 @@ model InternalNote {
   @@index([authorId])
 }
 
+// ---------------------------------------------------------------------------
+// Lab 4 Issue 2 — ActionTaken model and ActionStatus enum
+// ---------------------------------------------------------------------------
 
+enum ActionStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ActionTaken {
+  id               Int          @id @default(autoincrement())
+  ticketId         Int
+  ticket           Ticket       @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  actionAt         DateTime
+  description      String
+  result           String?
+  performedById    Int
+  performedBy      User         @relation("ActionPerformedBy", fields: [performedById], references: [id])
+  assigneeId       Int
+  assignee         User         @relation("ActionAssignee", fields: [assigneeId], references: [id])
+  status           ActionStatus @default(PLANNED)
+  followUpRequired Boolean      @default(false)
+  followUpNote     String?
+  attachmentNotes  String?
+  // Idempotency key — unique per creator; not exposed in API responses
+  clientRequestId  String?
+  version          Int          @default(1)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Idempotency constraint: one clientRequestId per creator (NULL values are excluded)
+  @@unique([performedById, clientRequestId])
+  // Ordered list for GET /api/tickets/:id/actions
+  @@index([ticketId, createdAt, id])
+  // Resolution gate: count PLANNED/IN_PROGRESS per ticket
+  @@index([ticketId, status])
+  // Staff dashboard — My open Actions (assigned to me)
+  @@index([assigneeId, status])
+}

@@ -1,0 +1,278 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { getPrisma } from "../../src/prisma.js";
+import { MESSAGES } from "../../src/actions/validation.js";
+import { api, createFixture, missingId, ticketApi, uuid, type Fixture } from "./helpers.js";
+import { dashApi } from "./dashboard-support.js";
+
+/**
+ * API-42 (Actions endpoints): requests that break several rules at once. The first failing
+ * check in the order of api-spec section 0 decides the response:
+ * 401, 403 PASSWORD_CHANGE_REQUIRED, 403 FORBIDDEN, 404, 4a replay (create only),
+ * 400 request, 409, 400 stored state.
+ */
+describe("API-42: check order of the Actions Taken endpoints", () => {
+  const prisma = getPrisma();
+  let fx: Fixture;
+  let openTicket: number;
+  let resolvedTicket: number;
+  let terminalAction: number;   // COMPLETED, version 1
+  let plannedAction: number;    // PLANNED, version 2 after one edit
+  let freshAction: number;      // PLANNED, version 1
+  let noAction: number;
+  let noTicket: number;
+  let replayKey: string;
+  let replayed: { id: number };
+  let actionsBefore: unknown;
+  // Filled in beforeAll; the cases below read it only when they run.
+  const u = {} as Fixture["users"];
+
+  beforeAll(async () => {
+    fx = await createFixture("order");
+    const staff = fx.users.staffA.cookie;
+    openTicket = await fx.createTicket({ status: "IN_PROGRESS" });
+    resolvedTicket = await fx.createTicket({ status: "IN_PROGRESS" });
+
+    terminalAction = (await api.create(staff, openTicket, { description: "Finished work", status: "COMPLETED", result: "All done" })).body.id;
+    plannedAction = (await api.create(staff, openTicket, { description: "Planned work" })).body.id;
+    await api.edit(staff, plannedAction, { expectedVersion: 1, description: "Planned work, edited" });
+    freshAction = (await api.create(staff, openTicket, { description: "Fresh planned work" })).body.id;
+
+    replayKey = uuid();
+    replayed = (await api.create(staff, resolvedTicket, { description: "Work before resolving", clientRequestId: replayKey, status: "COMPLETED", result: "Resolved it" })).body;
+    await prisma.ticket.update({ where: { id: resolvedTicket }, data: { currentStatus: "RESOLVED" } });
+
+    noAction = await missingId("actionTaken");
+    noTicket = await missingId("ticket");
+    Object.assign(u, fx.users);
+    actionsBefore = await snapshotActions();
+  });
+  afterAll(async () => {
+    await fx.cleanup();
+  });
+
+  type Case = { name: string; send: () => Promise<{ status: number; body: any }>; status: number; code: string; check?: (body: any) => void };
+  const invalidEdit = { expectedVersion: 1, description: "x" };   // description too short
+  const cases: Case[] = [
+      // ── PATCH /api/staff/actions/:actionId ──
+      { name: "edit: no session beats everything", send: () => api.edit("", noAction, invalidEdit), status: 401, code: "UNAUTHENTICATED" },
+      { name: "edit: password change required beats wrong role and missing Action", send: () => api.edit(u.mustChangeRequester.cookie, noAction, invalidEdit), status: 403, code: "PASSWORD_CHANGE_REQUIRED" },
+      { name: "edit: wrong role beats missing Action", send: () => api.edit(u.requesterA.cookie, noAction, invalidEdit), status: 403, code: "FORBIDDEN" },
+      { name: "edit: missing Action beats invalid body", send: () => api.edit(u.staffA.cookie, noAction, invalidEdit), status: 404, code: "NOT_FOUND" },
+      { name: "edit: invalid body beats terminal and stale", send: () => api.edit(u.staffA.cookie, terminalAction, { expectedVersion: 7, description: "x" }), status: 400, code: "VALIDATION_FAILED", check: b => expect(b.fields.description).toBe(MESSAGES.description) },
+      { name: "edit: no editable field (step 5) beats terminal", send: () => api.edit(u.staffA.cookie, terminalAction, { expectedVersion: 7 }), status: 400, code: "VALIDATION_FAILED", check: b => expect(b.error).toBe(MESSAGES.noChanges) },
+      { name: "edit: terminal beats stale", send: () => api.edit(u.staffA.cookie, terminalAction, { expectedVersion: 7, description: "Valid new text" }), status: 409, code: "ACTION_TERMINAL" },
+      { name: "edit: stale beats unchanged values (step 7)", send: () => api.edit(u.staffA.cookie, plannedAction, { expectedVersion: 1, description: "Planned work, edited" }), status: 409, code: "STALE_VERSION" },
+      { name: "edit: stale beats a stored-state follow-up error", send: () => api.edit(u.staffA.cookie, plannedAction, { expectedVersion: 1, followUpNote: "Note without follow-up" }), status: 409, code: "STALE_VERSION" },
+      { name: "edit: unchanged values with the right version (step 7)", send: () => api.edit(u.staffA.cookie, plannedAction, { expectedVersion: 2, description: "Planned work, edited" }), status: 400, code: "VALIDATION_FAILED", check: b => expect(b.error).toBe(MESSAGES.noChanges) },
+      { name: "edit: invalid assignee (step 5) beats terminal", send: () => api.edit(u.staffA.cookie, terminalAction, { expectedVersion: 1, assigneeId: u.requesterA.id }), status: 400, code: "VALIDATION_FAILED", check: b => expect(b.fields.assigneeId).toBe(MESSAGES.assigneeId) },
+
+      // ── PATCH /api/staff/actions/:actionId/status ──
+      { name: "status: no session", send: () => api.status("", noAction, { status: "DONE" }), status: 401, code: "UNAUTHENTICATED" },
+      { name: "status: password change required beats wrong role", send: () => api.status(u.mustChangeRequester.cookie, noAction, { status: "DONE" }), status: 403, code: "PASSWORD_CHANGE_REQUIRED" },
+      { name: "status: wrong role beats missing Action", send: () => api.status(u.requesterA.cookie, noAction, { status: "DONE" }), status: 403, code: "FORBIDDEN" },
+      { name: "status: missing Action beats invalid body", send: () => api.status(u.staffA.cookie, noAction, { status: "DONE" }), status: 404, code: "NOT_FOUND" },
+      { name: "status: unknown status value beats terminal", send: () => api.status(u.staffA.cookie, terminalAction, { expectedVersion: 7, status: "DONE" }), status: 400, code: "VALIDATION_FAILED", check: b => expect(b.fields.status).toBe(MESSAGES.status) },
+      { name: "status: terminal beats stale and an invalid pair", send: () => api.status(u.staffA.cookie, terminalAction, { expectedVersion: 7, status: "PLANNED" }), status: 409, code: "ACTION_TERMINAL" },
+      { name: "status: stale beats an invalid pair", send: () => api.status(u.staffA.cookie, plannedAction, { expectedVersion: 1, status: "PLANNED" }), status: 409, code: "STALE_VERSION" },
+      { name: "status: stale beats a missing Result", send: () => api.status(u.staffA.cookie, plannedAction, { expectedVersion: 1, status: "COMPLETED" }), status: 409, code: "STALE_VERSION" },
+      { name: "status: invalid pair with the right version (step 7)", send: () => api.status(u.staffA.cookie, freshAction, { expectedVersion: 1, status: "PLANNED" }), status: 400, code: "INVALID_TRANSITION", check: b => expect([b.from, b.to]).toEqual(["PLANNED", "PLANNED"]) },
+      { name: "status: missing Result with the right version (step 7)", send: () => api.status(u.staffA.cookie, freshAction, { expectedVersion: 1, status: "COMPLETED" }), status: 400, code: "VALIDATION_FAILED", check: b => expect(b.fields.result).toBe(MESSAGES.resultRequiredComplete) },
+
+      // ── POST /api/staff/tickets/:id/actions ──
+      { name: "create: no session", send: () => api.create("", noTicket, {}), status: 401, code: "UNAUTHENTICATED" },
+      { name: "create: password change required beats wrong role", send: () => api.create(u.mustChangeRequester.cookie, noTicket, {}), status: 403, code: "PASSWORD_CHANGE_REQUIRED" },
+      { name: "create: wrong role beats missing Ticket", send: () => api.create(u.requesterA.cookie, noTicket, {}), status: 403, code: "FORBIDDEN" },
+      { name: "create: missing Ticket beats a replay key and an invalid body", send: () => api.create(u.staffA.cookie, noTicket, { clientRequestId: replayKey }), status: 404, code: "NOT_FOUND" },
+      { name: "create: replay beats an invalid body and a resolved Ticket", send: () => api.create(u.staffA.cookie, resolvedTicket, { clientRequestId: replayKey, description: "x", status: "CANCELLED" }), status: 200, code: "", check: b => expect(b.id).toBe(replayed.id) },
+      { name: "create: replay key used on another Ticket beats an invalid body", send: () => api.create(u.staffA.cookie, openTicket, { clientRequestId: replayKey, description: "x" }), status: 400, code: "VALIDATION_FAILED", check: b => expect(Object.keys(b.fields)).toEqual(["clientRequestId"]) },
+      { name: "create: invalid body beats a resolved Ticket", send: () => api.create(u.staffA.cookie, resolvedTicket, { description: "x" }), status: 400, code: "VALIDATION_FAILED", check: b => expect(b.fields.description).toBe(MESSAGES.description) },
+      { name: "create: invalid assignee beats a resolved Ticket", send: () => api.create(u.staffA.cookie, resolvedTicket, { description: "Valid description", assigneeId: u.inactiveStaff.id }), status: 400, code: "VALIDATION_FAILED", check: b => expect(b.fields.assigneeId).toBe(MESSAGES.assigneeId) },
+      { name: "create: valid body on a resolved Ticket", send: () => api.create(u.staffA.cookie, resolvedTicket, { description: "Valid description" }), status: 409, code: "TICKET_NOT_ACCEPTING_ACTIONS", check: b => expect(b.ticketStatus).toBe("RESOLVED") },
+
+      // ── GET /api/tickets/:id/actions ──
+      { name: "list: no session", send: () => api.list("", noTicket), status: 401, code: "UNAUTHENTICATED" },
+      { name: "list: password change required beats missing Ticket", send: () => api.list(u.mustChangeRequester.cookie, noTicket), status: 403, code: "PASSWORD_CHANGE_REQUIRED" },
+      { name: "list: missing Ticket", send: () => api.list(u.staffA.cookie, noTicket), status: 404, code: "NOT_FOUND" },
+      { name: "list: non-numeric id is a missing Ticket", send: () => api.list(u.staffA.cookie, "abc"), status: 404, code: "NOT_FOUND" },
+  ];
+
+  // Runs in order after the cases above: none of them wrote anything.
+  const snapshotActions = () => prisma.actionTaken.findMany({
+    where: { ticketId: { in: [openTicket, resolvedTicket] } },
+    orderBy: { id: "asc" },
+    select: { id: true, version: true, status: true, description: true },
+  });
+
+  it.each(cases.map(c => [c.name, c] as const))("%s", async (_name, c) => {
+    const res = await c.send();
+    expect(`${res.status} ${res.body?.code ?? ""}`.trim(), JSON.stringify(res.body)).toBe(`${c.status} ${c.code}`.trim());
+    c.check?.(res.body);
+  });
+
+  it("none of the cases above changed or created an Action", async () => {
+    expect(await snapshotActions()).toEqual(actionsBefore);
+  });
+});
+
+/**
+ * API-42 (Ticket endpoints, Issue 4): the order for owner, priority, and status is 401,
+ * 403 PASSWORD_CHANGE_REQUIRED, 403 role, 404, 400 request, then 409 STALE_VERSION; the status
+ * endpoint then answers INVALID_TRANSITION before the resolution gate (api-spec section 0, exception),
+ * and a Cancelled Ticket answers 400. The 401/403/404 and Lab 3 400 bodies have no code.
+ */
+describe("API-42: check order of the Ticket owner, priority, and status endpoints", () => {
+  const prisma = getPrisma();
+  let fx: Fixture;
+  let gated: number;      // IN_PROGRESS, version 1, one PLANNED Action
+  let openGated: number;  // OPEN, version 1, one PLANNED Action
+  let cancelled: number;  // CANCELLED, version 1
+  let noTicket: number;
+  let ticketsBefore: unknown;
+  const u = {} as Fixture["users"];
+
+  const snapshotTickets = () => prisma.ticket.findMany({
+    where: { id: { in: [gated, openGated, cancelled] } },
+    orderBy: { id: "asc" },
+  });
+
+  beforeAll(async () => {
+    fx = await createFixture("order-ticket", "ticketwf");
+    gated = await fx.createTicket({ status: "IN_PROGRESS" });
+    openGated = await fx.createTicket({ status: "OPEN" });
+    cancelled = await fx.createTicket({ status: "CANCELLED" });
+    expect((await api.create(fx.users.staffA.cookie, gated, { description: "Unfinished action" })).status).toBe(201);
+    expect((await api.create(fx.users.staffA.cookie, openGated, { description: "Unfinished action" })).status).toBe(201);
+    noTicket = await missingId("ticket");
+    Object.assign(u, fx.users);
+    ticketsBefore = await snapshotTickets();
+  });
+  afterAll(async () => {
+    await fx.cleanup();
+  });
+
+  type Case = { name: string; send: () => Promise<{ status: number; body: any }>; status: number; code: string; check?: (body: any) => void };
+  const cases: Case[] = [
+    // ── PATCH /api/staff/tickets/:id/status ──
+    { name: "status: no session beats everything", send: () => ticketApi.status("", noTicket, {}), status: 401, code: "", check: b => expect(b).toEqual({ error: "Unauthorized" }) },
+    { name: "status: password change required beats wrong role and missing Ticket", send: () => ticketApi.status(u.mustChangeRequester.cookie, noTicket, {}), status: 403, code: "", check: b => expect(b).toEqual({ error: "Password change required before accessing this resource" }) },
+    { name: "status: wrong role beats missing Ticket", send: () => ticketApi.status(u.requesterA.cookie, noTicket, {}), status: 403, code: "", check: b => expect(b).toEqual({ error: "Forbidden" }) },
+    { name: "status: missing Ticket beats a missing newStatus", send: () => ticketApi.status(u.staffA.cookie, noTicket, {}), status: 404, code: "", check: b => expect(b).toEqual({ error: "Ticket not found" }) },
+    { name: "status: missing newStatus (step 5) beats stale", send: () => ticketApi.status(u.staffA.cookie, gated, { expectedVersion: 9 }), status: 400, code: "", check: b => expect(b).toEqual({ error: "newStatus is required" }) },
+    { name: "status: malformed expectedVersion (step 5) beats an invalid pair", send: () => ticketApi.status(u.staffA.cookie, gated, { newStatus: "CLOSED", expectedVersion: "1" }), status: 400, code: "VALIDATION_FAILED" },
+    { name: "status: stale beats an invalid pair", send: () => ticketApi.status(u.staffA.cookie, gated, { newStatus: "CLOSED", expectedVersion: 9 }), status: 409, code: "STALE_VERSION", check: b => expect(b.currentVersion).toBe(1) },
+    { name: "status: stale beats the gate", send: () => ticketApi.status(u.staffA.cookie, gated, { newStatus: "RESOLVED", expectedVersion: 9 }), status: 409, code: "STALE_VERSION" },
+    { name: "status: invalid pair beats the gate (OPEN to RESOLVED with an unfinished Action)", send: () => ticketApi.status(u.staffA.cookie, openGated, { newStatus: "RESOLVED", expectedVersion: 1 }), status: 400, code: "INVALID_TRANSITION", check: b => expect([b.from, b.to]).toEqual(["OPEN", "RESOLVED"]) },
+    { name: "status: the gate with the right version", send: () => ticketApi.status(u.staffA.cookie, gated, { newStatus: "RESOLVED", expectedVersion: 1 }), status: 409, code: "OPEN_ACTIONS_BLOCK_RESOLUTION", check: b => expect(b.openActionsCount).toBe(1) },
+    { name: "status: a Cancelled Ticket answers 400, not 409", send: () => ticketApi.status(u.staffA.cookie, cancelled, { newStatus: "RESOLVED", expectedVersion: 1 }), status: 400, code: "INVALID_TRANSITION", check: b => expect(b.from).toBe("CANCELLED") },
+
+    // ── PATCH /api/staff/tickets/:id/priority ──
+    { name: "priority: no session", send: () => ticketApi.priority("", noTicket, {}), status: 401, code: "" },
+    { name: "priority: password change required beats wrong role", send: () => ticketApi.priority(u.mustChangeRequester.cookie, noTicket, {}), status: 403, code: "" },
+    { name: "priority: wrong role beats missing Ticket", send: () => ticketApi.priority(u.requesterA.cookie, noTicket, {}), status: 403, code: "", check: b => expect(b).toEqual({ error: "Forbidden" }) },
+    { name: "priority: missing Ticket beats an invalid priority (404 before 400)", send: () => ticketApi.priority(u.staffA.cookie, noTicket, { itPriority: "URGENT" }), status: 404, code: "", check: b => expect(b).toEqual({ error: "Ticket not found" }) },
+    { name: "priority: invalid priority beats stale", send: () => ticketApi.priority(u.staffA.cookie, gated, { itPriority: "URGENT", expectedVersion: 9 }), status: 400, code: "", check: b => expect(b).toEqual({ error: "Invalid priority value. Must be LOW, MEDIUM, or HIGH." }) },
+    { name: "priority: malformed expectedVersion", send: () => ticketApi.priority(u.staffA.cookie, gated, { itPriority: "HIGH", expectedVersion: 0 }), status: 400, code: "VALIDATION_FAILED" },
+    { name: "priority: stale", send: () => ticketApi.priority(u.staffA.cookie, gated, { itPriority: "HIGH", expectedVersion: 9 }), status: 409, code: "STALE_VERSION" },
+
+    // ── PATCH /api/staff/tickets/:id/owner ──
+    { name: "owner: no session", send: () => ticketApi.owner("", noTicket, {}), status: 401, code: "" },
+    { name: "owner: password change required beats wrong role", send: () => ticketApi.owner(u.mustChangeRequester.cookie, noTicket, {}), status: 403, code: "" },
+    { name: "owner: wrong role beats missing Ticket", send: () => ticketApi.owner(u.requesterA.cookie, noTicket, {}), status: 403, code: "" },
+    { name: "owner: missing Ticket beats an invalid owner (404 before 400)", send: () => ticketApi.owner(u.staffA.cookie, noTicket, { ticketOwnerId: u.requesterA.id }), status: 404, code: "" },
+    { name: "owner: invalid owner beats stale", send: () => ticketApi.owner(u.staffA.cookie, gated, { ticketOwnerId: u.inactiveStaff.id, expectedVersion: 9 }), status: 400, code: "", check: b => expect(b).toEqual({ error: "Target user is not an active IT Staff or Administrator" }) },
+    { name: "owner: stale", send: () => ticketApi.owner(u.staffA.cookie, gated, { ticketOwnerId: u.staffA.id, expectedVersion: 9 }), status: 409, code: "STALE_VERSION" },
+  ];
+
+  it.each(cases.map(c => [c.name, c] as const))("%s", async (_name, c) => {
+    const res = await c.send();
+    expect(`${res.status} ${res.body?.code ?? ""}`.trim(), JSON.stringify(res.body)).toBe(`${c.status} ${c.code}`.trim());
+    c.check?.(res.body);
+  });
+
+  it("none of the Ticket cases above changed a Ticket", async () => {
+    expect(await snapshotTickets()).toEqual(ticketsBefore);
+  });
+});
+
+/**
+ * API-42 (dashboard endpoints, Issue 5): the dashboards have no resource, body, or state checks,
+ * so the order is 401, 403 PASSWORD_CHANGE_REQUIRED, 403 FORBIDDEN, then 200. Ids sent in the
+ * query never matter (BR-30).
+ */
+describe("API-42: check order of the dashboard endpoints", () => {
+  let fx: Fixture;
+  const u = {} as Fixture["users"];
+  const forged = () => `?userId=${u.staffA.id}&requesterId=abc&role=ADMINISTRATOR`;
+
+  beforeAll(async () => {
+    fx = await createFixture("order-dash", "dashtest");
+    Object.assign(u, fx.users);
+  });
+  afterAll(async () => {
+    await fx.cleanup();
+  });
+
+  const unauthenticated = { error: "Unauthorized", code: "UNAUTHENTICATED" };
+  const passwordChange = { error: "Password change required before accessing this resource", code: "PASSWORD_CHANGE_REQUIRED" };
+  const forbidden = { error: "Forbidden", code: "FORBIDDEN" };
+
+  it("requester: no session (or a bad one) beats everything, forged ids included", async () => {
+    for (const cookie of ["", "tk_session=not-a-real-session"]) {
+      const res = await dashApi.requester(cookie, forged());
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(unauthenticated);
+    }
+  });
+
+  it("requester: password change required beats wrong role", async () => {
+    // mustChangeStaff has the wrong role for this endpoint, but step 2 answers first
+    const res = await dashApi.requester(u.mustChangeStaff.cookie, forged());
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual(passwordChange);
+  });
+
+  it("requester: wrong role gives 403 FORBIDDEN, with or without forged ids", async () => {
+    for (const user of [u.staffA, u.admin]) {
+      for (const q of ["", forged()]) {
+        const res = await dashApi.requester(user.cookie, q);
+        expect(res.status).toBe(403);
+        expect(res.body).toEqual(forbidden);
+      }
+    }
+  });
+
+  it("requester: the right role with forged ids still gives 200 for the session user", async () => {
+    const res = await dashApi.requester(u.requesterA.cookie, forged());
+    expect(res.status).toBe(200);
+    expect(res.body.metrics.open.count).toBe(0);
+  });
+
+  it("staff: no session (or a bad one) beats everything", async () => {
+    for (const cookie of ["", "tk_session=not-a-real-session"]) {
+      const res = await dashApi.staff(cookie, forged());
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(unauthenticated);
+    }
+  });
+
+  it("staff: password change required beats wrong role", async () => {
+    const res = await dashApi.staff(u.mustChangeRequester.cookie, forged());
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual(passwordChange);
+  });
+
+  it("staff: wrong role gives 403 FORBIDDEN, with or without forged ids", async () => {
+    for (const q of ["", forged()]) {
+      const res = await dashApi.staff(u.requesterA.cookie, q);
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual(forbidden);
+    }
+  });
+
+  it("staff: the right role with forged ids gives 200, and a forged role does not add user counts", async () => {
+    const res = await dashApi.staff(u.staffB.cookie, forged());
+    expect(res.status).toBe(200);
+    expect(res.body.metrics.myAssigned.query).toContain(`ticketOwnerId=${u.staffB.id}&`);
+    expect(res.body).not.toHaveProperty("users");
+  });
+});

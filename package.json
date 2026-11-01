@@ -8,7 +8,8 @@
   },
   "scripts": {
     "db:reset": "npm --prefix server run db:reset",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:clean": "node scripts/e2e-restore.mjs"
   },
   "repository": {
     "type": "git",
@@ -23,6 +24,7 @@
   },
   "homepage": "https://github.com/Khawpun124/toktickit#readme",
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.4.1"
   }

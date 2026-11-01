@@ -7,6 +7,7 @@ import {
   TicketListItem,
   PaginationInfo,
 } from "../api.js";
+import { ticketStatusLabel } from "../ticketWorkflow.js";
 
 interface MyTicketsScreenProps {
   onNavigateToCreate?: () => void;
@@ -256,6 +257,7 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
                 type="text"
                 className="form-control"
                 placeholder="Search ticket number or summary..."
+                aria-label="Search tickets"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -331,6 +333,12 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
             >
               <option value="">All Statuses</option>
               <option value="NEW">NEW</option>
+              {/* Lab 4: a dashboard card's filter (for example a comma list) shown as one extra option */}
+              {currentStatus && currentStatus !== "NEW" && (
+                <option value={currentStatus}>
+                  {currentStatus.split(",").map((s) => ticketStatusLabel(s.trim())).join(", ")}
+                </option>
+              )}
             </select>
           </div>
         </div>

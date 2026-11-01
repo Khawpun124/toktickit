@@ -1,48 +1,48 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
+import { ROLE_LABELS, ROUTES, dashboardPathFor } from "../roles.js";
 
-interface AppHeaderProps {
-  activeTab?: "my-tickets" | "create-ticket" | "my-queue" | "user-management";
-  onSelectTab?: (tab: any) => void;
+type Tab = "dashboard" | "my-tickets" | "create-ticket" | "my-queue" | "user-management";
+
+/** Which entry is the current page, from the path (src/roles.ts holds the paths). */
+function tabFor(pathname: string): Tab {
+  if (pathname === ROUTES.requesterDashboard || pathname === ROUTES.staffDashboard) return "dashboard";
+  if (pathname === ROUTES.createTicket) return "create-ticket";
+  if (pathname.startsWith(ROUTES.userManagement)) return "user-management";
+  if (pathname.startsWith(ROUTES.queue)) return "my-queue";
+  return "my-tickets";
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) => {
+export const AppHeader: React.FC = () => {
   const { user, logout, refreshUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
   const currentUser = user;
+  const currentTab = tabFor(location.pathname);
 
-  const currentTab =
-    activeTab ||
-    (location.pathname === "/tickets/new"
-      ? "create-ticket"
-      : location.pathname.startsWith("/admin/users")
-      ? "user-management"
-      : location.pathname.startsWith("/staff/tickets")
-      ? "my-queue"
-      : "my-tickets");
+  // Lab 4: the Dashboard entry, and aria-current="page" on the active entry (ui-spec section 3).
+  const handleNavDashboard = () => navigate(dashboardPathFor(currentUser?.role));
+  const ariaCurrent = (tab: Tab) => (currentTab === tab ? ("page" as const) : undefined);
+  const dashboardButton = (
+    <button
+      onClick={handleNavDashboard}
+      aria-current={ariaCurrent("dashboard")}
+      className={`btn btn-sm ${
+        currentTab === "dashboard"
+          ? "btn-light fw-bold text-success"
+          : "btn-outline-light"
+      }`}
+    >
+      Dashboard
+    </button>
+  );
 
-  const handleNavMyTickets = () => {
-    if (onSelectTab) onSelectTab("my-tickets");
-    navigate("/tickets");
-  };
-
-  const handleNavCreateTicket = () => {
-    if (onSelectTab) onSelectTab("create-ticket");
-    navigate("/tickets/new");
-  };
-
-  const handleNavMyQueue = () => {
-    if (onSelectTab) onSelectTab("my-queue");
-    navigate("/staff/tickets");
-  };
-
-  const handleNavUserManagement = () => {
-    if (onSelectTab) onSelectTab("user-management");
-    navigate("/admin/users");
-  };
+  const handleNavMyTickets = () => navigate(ROUTES.myTickets);
+  const handleNavCreateTicket = () => navigate(ROUTES.createTicket);
+  const handleNavMyQueue = () => navigate(ROUTES.queue);
+  const handleNavUserManagement = () => navigate(ROUTES.userManagement);
 
   const handleLogout = async () => {
     if (user) {
@@ -65,32 +65,26 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
     }
   };
 
-  const formatRoleLabel = (role?: string) => {
-    switch (role) {
-      case "IT_STAFF":
-        return "IT Staff";
-      case "ADMINISTRATOR":
-        return "Administrator";
-      default:
-        return "Requester";
-    }
-  };
+  const formatRoleLabel = (role?: string) => ROLE_LABELS[(role ?? "REQUESTER") as keyof typeof ROLE_LABELS] ?? ROLE_LABELS.REQUESTER;
+
 
   return (
     <header className="zg-header shadow-sm py-2 px-3" style={{ backgroundColor: "var(--zg-primary)" }}>
-      <div className="container-fluid d-flex align-items-center justify-content-between">
-        <div className="d-flex align-items-center gap-4">
+      <div className="container-fluid d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div className="d-flex flex-wrap align-items-center gap-2 gap-md-4">
           <div className="d-flex align-items-center gap-2">
             <span className="h4 mb-0 fw-bold tracking-tight text-white">TokTickIT</span>
             <span className="badge bg-light text-dark font-weight-normal small">IT Service Desk</span>
           </div>
 
           {currentUser && (
-            <nav className="d-flex gap-2">
+            <nav className="d-flex flex-wrap gap-2" aria-label="Main navigation" data-testid="main-nav">
               {currentUser.role === "REQUESTER" && (
                 <>
+                  {dashboardButton}
                   <button
                     onClick={handleNavMyTickets}
+                    aria-current={ariaCurrent("my-tickets")}
                     className={`btn btn-sm ${
                       currentTab === "my-tickets"
                         ? "btn-light fw-bold text-success"
@@ -101,6 +95,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
                   </button>
                   <button
                     onClick={handleNavCreateTicket}
+                    aria-current={ariaCurrent("create-ticket")}
                     className={`btn btn-sm ${
                       currentTab === "create-ticket"
                         ? "btn-light fw-bold text-success"
@@ -113,8 +108,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
               )}
               {currentUser.role === "IT_STAFF" && (
                 <>
+                  {dashboardButton}
                   <button
                     onClick={handleNavMyQueue}
+                    aria-current={ariaCurrent("my-queue")}
                     className={`btn btn-sm ${
                       currentTab === "my-queue"
                         ? "btn-light fw-bold text-success"
@@ -125,6 +122,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
                   </button>
                   <button
                     onClick={handleNavCreateTicket}
+                    aria-current={ariaCurrent("create-ticket")}
                     className={`btn btn-sm ${
                       currentTab === "create-ticket"
                         ? "btn-light fw-bold text-success"
@@ -137,18 +135,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
               )}
               {currentUser.role === "ADMINISTRATOR" && (
                 <>
-                  <button
-                    onClick={handleNavUserManagement}
-                    className={`btn btn-sm ${
-                      currentTab === "user-management"
-                        ? "btn-light fw-bold text-success"
-                        : "btn-outline-light"
-                    }`}
-                  >
-                    Admin / User Management
-                  </button>
+                  {dashboardButton}
                   <button
                     onClick={handleNavMyQueue}
+                    aria-current={ariaCurrent("my-queue")}
                     className={`btn btn-sm ${
                       currentTab === "my-queue"
                         ? "btn-light fw-bold text-success"
@@ -156,6 +146,17 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
                     }`}
                   >
                     My Queue
+                  </button>
+                  <button
+                    onClick={handleNavUserManagement}
+                    aria-current={ariaCurrent("user-management")}
+                    className={`btn btn-sm ${
+                      currentTab === "user-management"
+                        ? "btn-light fw-bold text-success"
+                        : "btn-outline-light"
+                    }`}
+                  >
+                    Admin / User Management
                   </button>
                 </>
               )}
