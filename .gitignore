@@ -7,6 +7,9 @@ node_modules/
 # build output
 dist/
 build/
+*.tsbuildinfo
+# test coverage reports
+coverage/
 # prisma
 server/prisma/*.db
 # logs & OS

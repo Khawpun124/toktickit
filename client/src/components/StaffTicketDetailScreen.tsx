@@ -343,7 +343,7 @@ export const StaffTicketDetailScreen: React.FC = () => {
     return (
       <div className="container py-5">
         <div className="alert alert-warning shadow-sm" role="alert">
-          <h4 className="alert-heading fw-bold">404 Not Found</h4>
+          <h4 className="alert-heading fw-bold">Ticket not found</h4>
           <p className="mb-3">The requested ticket does not exist or could not be found.</p>
           <button onClick={() => navigate("/staff/tickets")} className="btn btn-sm btn-outline-secondary">
             ← Back to Queue
@@ -566,7 +566,7 @@ export const StaffTicketDetailScreen: React.FC = () => {
                   {/* Post comment form */}
                   <form onSubmit={handleCommentSubmit}>
                     {commentError && (
-                      <div className="alert alert-danger py-2 mb-2 small">{commentError}</div>
+                      <div className="alert alert-danger py-2 mb-2 small" role="alert">{commentError}</div>
                     )}
                     <div className="mb-2">
                       <textarea
@@ -644,7 +644,7 @@ export const StaffTicketDetailScreen: React.FC = () => {
                   {/* Post note form */}
                   <form onSubmit={handleNoteSubmit}>
                     {noteError && (
-                      <div className="alert alert-danger py-2 mb-2 small">{noteError}</div>
+                      <div className="alert alert-danger py-2 mb-2 small" role="alert">{noteError}</div>
                     )}
                     <div className="mb-2">
                       <textarea

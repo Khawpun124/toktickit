@@ -287,7 +287,7 @@ IT Staff / Administrator dashboard
 - BR-36: No placeholder text, unfinished controls, or obsolete or duplicate UI may remain,
   and the primary flows produce no console errors and no broken links.
 - BR-37: `GET /api/health` is unchanged. `GET /api/health/ready` checks the database and
-  returns 200 `{ "status": "ready" }` or 503 `{ "status": "unavailable" }`.
+  returns 200 `{ "status": "ready" }` or 503 `{ "status": "unavailable", "code": "NOT_READY" }` (api-spec section 10).
 - BR-38: The seed is idempotent (safe to run repeatedly) and documents its development
   credentials. It contains no real secrets.
 

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { getPrisma } from "../prisma.js";
 import { authenticated, passwordChanged, staffOnly } from "../http/guards.js";
 import { internalError, notFound, sendError, validationFailed, type FieldErrors } from "../http/errors.js";
+import { logServerError } from "../http/log.js";
 import { ACTION_INCLUDE, toActionResource, type ActionWithPeople } from "../actions/resource.js";
 import { decideTransition, isTerminal, type ActionStatusValue } from "../actions/status.js";
 import {
@@ -100,7 +101,8 @@ actionsRouter.get("/api/tickets/:id/actions", authenticated, passwordChanged, as
       include: ACTION_INCLUDE,
     });
     res.status(200).json(actions.map(toActionResource));
-  } catch {
+  } catch (error) {
+    logServerError(error, req);
     internalError(res);
   }
 });
@@ -182,7 +184,8 @@ actionsRouter.post("/api/staff/tickets/:id/actions", authenticated, passwordChan
         ticketStatus: outcome.ticketStatus,
       });
     } else res.status(201).json(toActionResource(outcome.action));
-  } catch {
+  } catch (error) {
+    logServerError(error, req);
     internalError(res);
   }
 });
@@ -240,7 +243,8 @@ actionsRouter.patch("/api/staff/actions/:actionId", authenticated, passwordChang
       return;
     }
     res.status(200).json(toActionResource((await loadAction(stored.id))!));
-  } catch {
+  } catch (error) {
+    logServerError(error, req);
     internalError(res);
   }
 });
@@ -299,7 +303,8 @@ actionsRouter.patch("/api/staff/actions/:actionId/status", authenticated, passwo
       return;
     }
     res.status(200).json(toActionResource((await loadAction(stored.id))!));
-  } catch {
+  } catch (error) {
+    logServerError(error, req);
     internalError(res);
   }
 });

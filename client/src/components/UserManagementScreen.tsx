@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
 import {
@@ -12,6 +12,7 @@ import {
   resetAdminUserPassword,
 } from "../api.js";
 import { PasswordRuleChecklist, validatePasswordRules } from "./PasswordRuleChecklist.js";
+import { useDialogFocus } from "./useDialogFocus.js";
 
 // ── Role badge helpers ──────────────────────────────────────────────────────
 
@@ -77,17 +78,6 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ isActive }) => (
     {isActive ? "Active" : "Inactive"}
   </span>
 );
-
-// ── Password rules checker ──────────────────────────────────────────────────
-
-function checkPasswordRules(pw: string) {
-  return {
-    minLength: pw.length >= 8,
-    hasUpperLower: /[A-Z]/.test(pw) && /[a-z]/.test(pw),
-    hasNumber: /[0-9]/.test(pw),
-    hasSpecialChar: /[^A-Za-z0-9]/.test(pw),
-  };
-}
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
@@ -213,6 +203,14 @@ export const UserManagementScreen: React.FC = () => {
     setSelectedUser(null);
   };
 
+  // BR-35: below 992 px the panel is a full-screen overlay, so there it is a modal dialog (focus
+  // trapped, Escape closes, focus returns). On desktop it is a side panel in the page, not a dialog,
+  // and the overlay copy is hidden.
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const narrowScreen = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 991.98px)").matches;
+  const overlayActive = panelMode !== null && narrowScreen;
+  useDialogFocus(overlayRef, { active: overlayActive, onClose: closePanel, canClose: !submitting && !resetting });
+
   // ── Submit create ─────────────────────────────────────────────────────────
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -243,8 +241,15 @@ export const UserManagementScreen: React.FC = () => {
       };
       await createAdminUser(payload);
       setFormSuccess("User created successfully.");
+      // BR-34: the entered values are cleared only now, after success. The panel stays open with the
+      // success message, ready for the next user.
+      setFormName("");
+      setFormEmail("");
+      setFormRole("REQUESTER");
+      setFormIsActive(true);
+      setFormPassword("");
+      setShowPassword(false);
       await fetchUsers(search, roleFilter);
-      // Keep panel open showing success
     } catch (err: any) {
       if (err.status === 400 && err.message?.toLowerCase().includes("email")) {
         setEmailError(err.message);
@@ -359,7 +364,6 @@ export const UserManagementScreen: React.FC = () => {
     );
   }
 
-  const passwordRules = checkPasswordRules(formPassword);
   const panelOpen = panelMode !== null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -523,7 +527,6 @@ export const UserManagementScreen: React.FC = () => {
                     resetError={resetError}
                     resetSuccess={resetSuccess}
                     resetting={resetting}
-                    passwordRules={passwordRules}
                     onChangeName={setFormName}
                     onChangeEmail={(v) => { setFormEmail(v); setEmailError(null); }}
                     onChangeRole={setFormRole}
@@ -543,6 +546,8 @@ export const UserManagementScreen: React.FC = () => {
               {/* Mobile full-screen modal overlay */}
               <div
                 className="d-lg-none"
+                ref={overlayRef}
+                {...(overlayActive ? { role: "dialog", "aria-modal": true, "aria-label": panelMode === "create" ? "Create New User" : "Edit User" } : {})}
                 style={{
                   position: "fixed",
                   inset: 0,
@@ -581,7 +586,6 @@ export const UserManagementScreen: React.FC = () => {
                     resetError={resetError}
                     resetSuccess={resetSuccess}
                     resetting={resetting}
-                    passwordRules={passwordRules}
                     onChangeName={setFormName}
                     onChangeEmail={(v) => { setFormEmail(v); setEmailError(null); }}
                     onChangeRole={setFormRole}
@@ -626,7 +630,6 @@ interface PanelContentProps {
   resetError: string | null;
   resetSuccess: string | null;
   resetting: boolean;
-  passwordRules: ReturnType<typeof checkPasswordRules>;
   onChangeName: (v: string) => void;
   onChangeEmail: (v: string) => void;
   onChangeRole: (v: UserRole) => void;
@@ -660,7 +663,6 @@ const PanelContent: React.FC<PanelContentProps> = ({
   resetError,
   resetSuccess,
   resetting,
-  passwordRules,
   onChangeName,
   onChangeEmail,
   onChangeRole,

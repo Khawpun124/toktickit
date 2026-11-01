@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { getPrisma } from "../prisma.js";
 import { authenticated, passwordChanged, staffOnly } from "../http/guards.js";
 import { internalError, sendError } from "../http/errors.js";
+import { logServerError } from "../http/log.js";
 import { dashboardNow } from "../dashboard/clock.js";
 import { buildRequesterDashboard } from "../dashboard/requester.js";
 import { buildStaffDashboard } from "../dashboard/staff.js";
@@ -23,7 +24,8 @@ function requesterOnly(req: Request, res: Response, next: NextFunction): void {
 dashboardRouter.get("/api/dashboard/requester", authenticated, passwordChanged, requesterOnly, async (req: Request, res: Response) => {
   try {
     res.json(await buildRequesterDashboard(getPrisma(), req.user!.id, dashboardNow()));
-  } catch {
+  } catch (error) {
+    logServerError(error, req);
     internalError(res);
   }
 });
@@ -31,7 +33,8 @@ dashboardRouter.get("/api/dashboard/requester", authenticated, passwordChanged, 
 dashboardRouter.get("/api/dashboard/staff", authenticated, passwordChanged, staffOnly, async (req: Request, res: Response) => {
   try {
     res.json(await buildStaffDashboard(getPrisma(), { id: req.user!.id, role: req.user!.role }, dashboardNow()));
-  } catch {
+  } catch (error) {
+    logServerError(error, req);
     internalError(res);
   }
 });

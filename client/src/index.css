@@ -67,10 +67,3 @@ body {
   color: var(--zg-primary);
 }
 
-.zg-callout-info {
-  background-color: var(--zg-pale);
-  border-left: 4px solid var(--zg-secondary);
-  color: var(--zg-text);
-  padding: 12px 16px;
-  border-radius: 4px;
-}
