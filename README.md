@@ -65,8 +65,8 @@ toktickit/
 │   ├── .env.example
 │   ├── package.json
 │   └── vitest.config.ts
-├── e2e/                       # Playwright specs: lab-02/ lab-03/, global-setup.ts
-├── artifacts/                 # committed screenshots written by the Lab 2 and Lab 3 E2E specs
+├── e2e/                       # Playwright specs: lab-02/ lab-03/ lab-04/, global-setup.ts
+├── artifacts/                 # committed screenshots written by the Lab 2, Lab 3, and Lab 4 E2E specs
 ├── docs/                      # lab-01/ to lab-04/ (specification, api-spec, ui-spec, tests, evidence/)
 ├── scripts/                   # e2e-restore.mjs (npm run test:e2e:clean)
 ├── .github/workflows/ci.yml
@@ -459,12 +459,50 @@ npm run test:e2e:clean
 - The global setup (`e2e/global-setup.ts`) runs `npm run db:reset` first, so E2E also resets the
   development database. Playwright starts the backend and frontend dev servers itself, or reuses
   ones already running on ports 3000 and 5173.
-- The Lab 2 and Lab 3 specs rewrite the committed screenshots in `artifacts/` on every run.
+- The Lab 2, Lab 3, and Lab 4 specs rewrite the committed screenshots in `artifacts/` on every run.
   `npm run test:e2e:clean` runs `npx playwright test` and then always runs
   `git restore artifacts/`, even when tests fail, and exits with Playwright's own exit code.
   Extra arguments go to Playwright, for example `npm run test:e2e:clean -- --project=desktop`.
 - `npm run test:e2e` (plain `playwright test`, used by CI) leaves the rewritten screenshots in
   place; run `git restore artifacts/` afterwards unless you mean to update them.
+
+**Lab 4 specs (`e2e/lab-04/`)**, each run on desktop (1280×800), tablet (834×1194), and mobile (375×667):
+
+| Spec | Tests |
+|---|---|
+| `actions-taken-flow.spec.ts` | E2E-01, E2E-02, RESP-03, RESP-04: create, edit, start, and complete an Action; the Requester's read-only view; follow-up validation; the edit conflict |
+| `ticket-resolution.spec.ts` | E2E-03, E2E-04: Resolved blocked by an unfinished Action (UI and direct API); cancelling a Ticket cancels its Actions |
+| `dashboards.spec.ts` | E2E-05, RESP-01, RESP-02, RESP-04: card counts equal the lists they open; Urgent Tickets; empty and failure states; card reflow |
+| `accessibility.spec.ts` | A11Y-02, A11Y-03: keyboard-only use with visible focus; axe on both dashboards and both Ticket Detail screens (no serious or critical violation) |
+| `regression-sweep.spec.ts` | E2E-06, E2E-07: every role's links with no console error or failed request; the Lab 1-3 flow |
+
+- The global setup also runs `e2e/lab-04/support/prepare.ts`. It changes the first password of the
+  seeded Lab 4 users once per run, to random values, and keeps their sessions in
+  `playwright/.auth/` (git-ignored). Every Lab 4 test creates its own users and Tickets through
+  the API.
+- The Lab 4 specs write 48 screenshots to `artifacts/lab-04/screenshots/`. There are four folders:
+  - `staff-dashboard/`: populated, empty, failure
+  - `requester-dashboard/`: populated, empty
+  - `actions-taken/`: list, create, edit, validation, conflict, terminal, requester-readonly
+  - `ticket-workflow/`: permitted-transitions, confirmation, gate-block, success
+
+  Each file is named `<state>-<desktop|tablet|mobile>.png`. Most states are captured as the
+  full page. States with an open dialog, and the success toast, are captured as the viewport
+  shows them: actions-taken create, edit, validation, conflict, terminal and requester-readonly,
+  and ticket-workflow success.
+
+  Just before each screenshot, the text that changes between runs is replaced in the page with
+  fixed text (`e2e/lab-04/support/standins.ts`):
+  - the users a test creates appear as readable stand-ins, such as "Jordan Staff" and
+    `casey.requester@example.test`;
+  - Ticket numbers become `TKT-0000-000000`;
+  - dates and times show midnight on 1 Jan 2026;
+  - date-time fields get the value `2026-01-01T00:00`.
+
+  The real text is put back right after the screenshot. The Lab 4 browser also uses software
+  rasterisation. Together, these make the images byte-identical from run to run on the same
+  machine. `npm run test:e2e:clean` restores the committed images afterwards.
+- Results, the axe report, and the known limits: `docs/lab-04/evidence/issue-7-verification.md`.
 
 ---
 

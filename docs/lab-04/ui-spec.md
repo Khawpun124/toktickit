@@ -63,8 +63,7 @@ Header row: greeting "Welcome back, <first name>" with a one-line subtitle on th
 on the right a Refresh button (secondary) and small "Updated hh:mm" text (the API's `generatedAt` shown in the browser's time zone). Refresh shows a
 busy state and re-fetches; it does not reload the page.
 
-Metric cards (all are links; each is one focusable element with an accessible name such
-as "Unassigned tickets: 7. View all"):
+Metric cards (all are links; each is one focusable element whose accessible name is its visible text, for example "Unassigned 7 View all" (WCAG 2.5.3, Label in Name); the arrow is hidden from assistive technology and a visually hidden sentence, linked with `aria-describedby`, says what the link opens):
 
 | Card | Number | Opens |
 |---|---|---|
@@ -247,7 +246,7 @@ Every data-driven screen implements the Lab 2 and Lab 3 states, plus these speci
 - Conflict: a readable alert with the action to recover (reload).
 - Failure: a safe message with a Retry button, layout intact. Dashboard data arrives from
   one request, so failure replaces the data area only, not the whole page.
-- Success: short confirmation in a live region; no blocking dialog.
+- Success: short confirmation in a live region; no blocking dialog. On the Staff Ticket Detail it is a toast fixed to the bottom of the viewport (above the safe area on phones): it never covers a heading or the control that triggered it, never blocks a click (the pointer passes through it), and never moves the page content; for the few seconds it shows, it may cover other content at the bottom of the screen, and it disappears by itself.
 
 ## 10. Responsive Rules
 
@@ -265,8 +264,8 @@ text never replaced by truncation of the only copy of important data.
 
 - Semantics: a header with navigation, one `main`, one `h1` per page, ordered headings,
   lists for lists, tables with header cells for tables.
-- A metric card is a single link whose accessible name combines label, value, and action
-  ("Open tickets: 3. View all"). The number alone is never the whole name.
+- A metric card is a single link whose accessible name is its visible text: label, value, and action ("Open 3 View all"). The visible text must be contained in the accessible name
+  (WCAG 2.5.3), so no `aria-label` replaces it. The number alone is never the whole name. A visually hidden description (linked with `aria-describedby`) says what the link opens.
 - Dialogs use `role="dialog"` with `aria-modal="true"` and an `aria-labelledby` title. On
   open, focus moves into the dialog; Tab and Shift+Tab stay inside; Escape closes it (after
   the unsaved-changes confirmation if needed); on close, focus returns to the control that

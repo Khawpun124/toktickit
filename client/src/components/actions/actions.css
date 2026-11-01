@@ -59,7 +59,12 @@
 
 .zg-actions-table th { white-space: nowrap; }
 .zg-actions-table td { vertical-align: middle; }
-.zg-actions-table .zg-col-description { min-width: 14rem; }
+.zg-actions-table .zg-col-description { min-width: 8rem; }
+/* Fit the card at every width from 768 px (RESP-03/04): the date may wrap after its comma, and the
+   last column keeps just the View button's width, so the table never scrolls sideways. */
+.zg-actions-table td.text-nowrap { white-space: normal !important; }
+.zg-actions-table th:last-child,
+.zg-actions-table td:last-child { width: 1%; white-space: nowrap; }
 
 .zg-readonly-field {
   background: var(--zg-field-readonly-bg);

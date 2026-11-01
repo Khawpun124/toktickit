@@ -409,7 +409,7 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
               )}
               {ticket.itPriority === "LOW" && <span className="badge bg-secondary">🟢 Low</span>}
               {!ticket.itPriority && (
-                <span className="badge bg-light text-muted border opacity-75">
+                <span className="badge bg-light zg-text-muted-strong border">
                   Not yet assigned
                 </span>
               )}

@@ -9,10 +9,10 @@ import {
 // drill-down links with the comma-separated status filter; UI-19 for the Requester's times.
 
 const CARDS = [
-  { name: "Open tickets: 3. View all", href: "/tickets?currentStatus=NEW,OPEN,IN_PROGRESS,REOPENED", option: "Open, In Progress, Reopened" },
-  { name: "Tickets waiting for you: 2. View all", href: "/tickets?currentStatus=WAITING_FOR_REQUESTER", option: "Waiting for Requester" },
-  { name: "Resolved tickets: 5. View all", href: "/tickets?currentStatus=RESOLVED", option: "Resolved" },
-  { name: "Closed tickets: 12. View all", href: "/tickets?currentStatus=CLOSED", option: "Closed" },
+  { name: "Open 3 View all", href: "/tickets?currentStatus=NEW,OPEN,IN_PROGRESS,REOPENED", option: "Open, In Progress, Reopened" },
+  { name: "Waiting for you 2 View all", href: "/tickets?currentStatus=WAITING_FOR_REQUESTER", option: "Waiting for Requester" },
+  { name: "Resolved 5 View all", href: "/tickets?currentStatus=RESOLVED", option: "Resolved" },
+  { name: "Closed 12 View all", href: "/tickets?currentStatus=CLOSED", option: "Closed" },
 ];
 
 const rows = (testId: string) => within(screen.getByTestId(testId)).queryAllByRole("listitem");
@@ -33,7 +33,7 @@ describe("UI-13: Requester Dashboard", () => {
   it("UI-13: four cards and three lists render from the payload, with the subtitle and quick actions", async () => {
     await openDashboard();
     const cards = within(await screen.findByTestId("metric-cards")).getAllByRole("link");
-    expect(cards.map(c => c.getAttribute("aria-label"))).toEqual(CARDS.map(c => c.name));
+    cards.forEach((c, i) => expect(c).toHaveAccessibleName(CARDS[i].name));
     for (const title of ["Needs your attention", "Recently updated", "Recently resolved"]) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeInTheDocument();
     }
@@ -65,7 +65,7 @@ describe("UI-13: Requester Dashboard", () => {
     const cards = within(await screen.findByTestId("metric-cards")).getAllByRole("link");
     expect(cards).toHaveLength(4);
     cards.forEach((c, i) => {
-      expect(c.getAttribute("aria-label")).toMatch(/: 0\. View all$/);
+      expect(c).toHaveAccessibleName(/ 0 View all$/);
       expect(c).toHaveAttribute("href", CARDS[i].href);
     });
     expect(screen.getByText("Nothing needs your attention right now.")).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe("UI-19: the Requester Dashboard under different browser time zones", ()
     const result = {
       updated: screen.getByTestId("dashboard-updated").textContent,
       waiting: rows("list-needs-attention").map(r => r.querySelector(".text-muted")?.textContent),
-      cards: within(screen.getByTestId("metric-cards")).getAllByRole("link").map(l => l.getAttribute("aria-label")),
+      cards: within(screen.getByTestId("metric-cards")).getAllByRole("link").map(l => l.textContent),
       needs: rowNumbers("list-needs-attention"),
       updatedRows: rowNumbers("list-recently-updated"),
       resolved: rowNumbers("list-recently-resolved"),

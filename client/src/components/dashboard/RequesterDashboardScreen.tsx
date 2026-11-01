@@ -43,10 +43,10 @@ export const RequesterDashboardScreen: React.FC = () => {
       {data && (
         <>
           <div className="zg-metric-grid zg-metric-grid--requester mb-4" data-testid="metric-cards">
-            <MetricCard to={`/tickets?${data.metrics.open.query}`} label="Open" name="Open tickets" value={data.metrics.open.count} />
-            <MetricCard to={`/tickets?${data.metrics.waitingForYou.query}`} label="Waiting for you" name="Tickets waiting for you" value={data.metrics.waitingForYou.count} />
-            <MetricCard to={`/tickets?${data.metrics.resolved.query}`} label="Resolved" name="Resolved tickets" value={data.metrics.resolved.count} />
-            <MetricCard to={`/tickets?${data.metrics.closed.query}`} label="Closed" name="Closed tickets" value={data.metrics.closed.count} />
+            <MetricCard to={`/tickets?${data.metrics.open.query}`} label="Open" description="Opens My Tickets filtered to your open tickets." value={data.metrics.open.count} />
+            <MetricCard to={`/tickets?${data.metrics.waitingForYou.query}`} label="Waiting for you" description="Opens My Tickets filtered to tickets waiting for you." value={data.metrics.waitingForYou.count} />
+            <MetricCard to={`/tickets?${data.metrics.resolved.query}`} label="Resolved" description="Opens My Tickets filtered to your resolved tickets." value={data.metrics.resolved.count} />
+            <MetricCard to={`/tickets?${data.metrics.closed.query}`} label="Closed" description="Opens My Tickets filtered to your closed tickets." value={data.metrics.closed.count} />
           </div>
 
           <div className="row g-4">
