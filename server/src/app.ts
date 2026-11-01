@@ -495,15 +495,10 @@ app.get("/api/tickets", requireAuth, requirePasswordChanged, async (req: Request
     whereClause.itPriority = itPriority;
   }
 
-  // Current status filter
-  const validStatuses = ["NEW"];
-  if (currentStatus !== undefined && currentStatus !== "") {
-    if (typeof currentStatus !== "string" || !validStatuses.includes(currentStatus)) {
-      res.status(400).json({ error: "Invalid currentStatus. Allowed values: NEW" });
-      return;
-    }
-    whereClause.currentStatus = currentStatus;
-  }
+  // Current status filter: one status or a comma list (Lab 4 api-spec section 7)
+  const statusFilter = parseStatusFilter(currentStatus, res);
+  if (!statusFilter.ok) return;
+  if (statusFilter.where) whereClause.currentStatus = statusFilter.where;
 
   // Search filter (ticketNumber partial or summary case-insensitive partial)
   if (search && typeof search === "string" && search.trim() !== "") {
@@ -1089,27 +1084,10 @@ app.get("/api/staff/tickets", requireAuth, requirePasswordChanged, async (req: R
     whereClause.itPriority = itPriority;
   }
 
-  // Current Status filter
-  const validStatuses = [
-    "NEW",
-    "OPEN",
-    "IN_PROGRESS",
-    "WAITING_FOR_REQUESTER",
-    "RESOLVED",
-    "CLOSED",
-    "REOPENED",
-    "CANCELLED",
-  ];
-  if (currentStatus !== undefined && currentStatus !== null && (currentStatus as string).trim() !== "") {
-    const trimmedStatus = (currentStatus as string).trim();
-    if (!validStatuses.includes(trimmedStatus)) {
-      res.status(400).json({
-        error: `Invalid currentStatus. Allowed values: ${validStatuses.join(", ")}`,
-      });
-      return;
-    }
-    whereClause.currentStatus = trimmedStatus;
-  }
+  // Current Status filter: one status or a comma list (Lab 4 api-spec section 7)
+  const statusFilter = parseStatusFilter(currentStatus, res);
+  if (!statusFilter.ok) return;
+  if (statusFilter.where) whereClause.currentStatus = statusFilter.where;
 
   // Ticket Owner filter ("unassigned" or numeric staff ID)
   if (ticketOwnerId !== undefined && ticketOwnerId !== null && ticketOwnerId !== "") {
@@ -1654,6 +1632,11 @@ app.use(actionsRouter);
 import { ticketWorkflowRouter } from "./routes/ticket-workflow.js";
 import { countOpenActions, workflowFields } from "./tickets/header.js";
 app.use(ticketWorkflowRouter);
+
+// Lab 4 dashboards (src/routes/dashboard.ts) and the currentStatus list filter used above
+import { dashboardRouter } from "./routes/dashboard.js";
+import { parseStatusFilter } from "./tickets/status-filter.js";
+app.use(dashboardRouter);
 
 export default app;
 

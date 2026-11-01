@@ -323,8 +323,9 @@ also gains `"openActionsCount": 2`. All earlier fields are unchanged.
 - Every value is checked against the whitelist (`NEW`, `OPEN`, `IN_PROGRESS`,
   `WAITING_FOR_REQUESTER`, `RESOLVED`, `CLOSED`, `REOPENED`, `CANCELLED`). Any invalid value
   returns 400 `VALIDATION_FAILED` with `fields.currentStatus` listing the allowed values.
-- An empty `currentStatus=` is treated as not supplied. A single value behaves exactly as in
-  Labs 2 and 3.
+- An empty `currentStatus=` is treated as not supplied. A single value behaves as in Labs 2 and 3, with one extension: `GET /api/tickets` accepted only `NEW` in Lab 2 and now accepts all eight
+statuses (the Requester dashboard cards need them). An invalid value keeps the Lab text that starts with "Invalid currentStatus" and gains the
+`code` and `fields` named here.
 
 ## 8. GET /api/dashboard/requester
 
@@ -400,7 +401,8 @@ Response 200:
 }
 ```
 
-- `users` is present only for an Administrator and is omitted for IT Staff (BR-30).
+- `users` is present only for an Administrator and is omitted for IT Staff (AC-24). It counts every row of the User table, whatever the
+  role, split by `isActive`, so it equals what `/admin/users` lists.
 - "Active" statuses are NEW, OPEN, IN_PROGRESS, WAITING_FOR_REQUESTER, REOPENED.
 - Lists hold at most 5 items, and ties break by `id` in the same direction as the primary order (BR-29): `myRecentTickets` (owned by me, `updatedAt` descending, `id` descending), `myOpenActions` (assigned to me, PLANNED or IN_PROGRESS, `actionAt` ascending, `id` ascending), `urgentTickets` (active with IT Priority HIGH, least recently updated first: `updatedAt` ascending, `id` ascending).
 - `query` is the drill-down for `GET /api/staff/tickets`; each card number equals that
