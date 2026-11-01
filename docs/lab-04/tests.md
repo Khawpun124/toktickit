@@ -103,7 +103,7 @@ Status legend (the Final column):
 | MIG-02 | Migration/Regression | AC-25, Section 7, BR-39 | Backfill values on a simulated Lab 3 database (a per-Ticket table is printed), and the schema structure on the dev database (columns, defaults, foreign keys, indexes) | `version` is 1; `resolvedAt` equals `updatedAt` for RESOLVED and CLOSED and is NULL for every other status; `statusChangedAt` equals `updatedAt` for every Ticket and is never NULL; no Actions exist; the structure matches the migration | `server/scripts/test-upgrade-path-lab4.ts` (values) and `server/tests/lab-04/migration.test.ts` (structure) | Issue 2 | Pass |
 | MIG-03 | Migration/Regression | Section 7 recovery | Rollback (`db:rollback:lab4 -- --confirm`) after a successful migration, and the backup restore procedure | Actions exported first; Lab 4 objects and the migration record removed; every Lab 1-3 table except Session equals the snapshot (counts and per-row checksums); the migration can be applied again | `server/scripts/test-upgrade-path-lab4.ts` | Issue 2 | Pass |
 | MIG-04 | Migration/Regression | AC-27 | Run the seed twice | No duplicates; every status present; Tickets with 0, 1, and many Actions; users for zero and non-zero dashboards | `server/tests/lab-04/seed.test.ts` | Issue 2 | Pass |
-| MIG-05 | Migration/Regression | AC-26 | Lab 1-3 test files unchanged and passing | No diff against `main` for old test files; all pass | `server/tests/lab-01/*`, `server/tests/lab-02/*`, `server/tests/lab-03/*`, `client/tests/lab-01/*`, `client/tests/lab-02/*`, `client/tests/lab-03/*` | Every Issue, final in Issue 7 | Pending |
+| MIG-05 | Migration/Regression | AC-26 | Lab 1-3 test files unchanged and passing | No diff against `main` for old test files; all pass | `server/tests/lab-01/*`, `server/tests/lab-02/*`, `server/tests/lab-03/*`, `client/tests/lab-01/*`, `client/tests/lab-02/*`, `client/tests/lab-03/*` | Every Issue, final in Issue 7 | Pass |
 | MIG-06 | Migration/Regression | AC-25 | Lab 3 upgrade-path script still passes after Lab 4 migrations | Ownership comparison matrix all matches | `server/scripts/test-upgrade-path.ts` | Issue 2 | Pass |
 | MIG-07 | Migration/Regression | AC-34 | Force a failure in the middle of a copy of the migration | psql finds the root cause (the first error is 42P01 at the forced statement) and leaves no partial schema; `prisma migrate deploy` exits non-zero, its `_prisma_migrations` row keeps `finished_at` NULL, and no partial schema remains (its error text is printed but not checked, because Prisma shows only 25P02); after `migrate resolve --rolled-back` and restoring the good file, deploy succeeds | `server/scripts/test-upgrade-path-lab4.ts` | Issue 2 | Pass |
 | MIG-08 | Migration/Regression | AC-25, AC-35 | `db:verify:lab4` after the upgrade and after the rollback | After the upgrade every check passes; after the rollback ActionTaken, the enum, the columns, and the migration record are gone and every Lab 1-3 table except Session equals the snapshot; applying again works | `server/scripts/test-upgrade-path-lab4.ts` | Issue 2 | Pass |
@@ -133,19 +133,19 @@ Status legend (the Final column):
 | STYLE-03 | UI Style | Lab 2 and 3 form rules | Validation placement and required markers in the Action form | Message directly under the field; asterisk plus message | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pass |
 | STYLE-04 | UI Style | BR-15 | Actions Taken versus Internal Notes | Visually distinct private and shared areas | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pass |
 | A11Y-01 | Accessibility | AC-29, BR-35 | Modal dialog | Focus moves in, is trapped, Escape closes, focus returns to the opener | `client/tests/lab-04/ActionsTaken.test.tsx` | Issue 3 | Pass |
-| A11Y-02 | Accessibility | AC-29 | Keyboard operation of cards, status control, and modal | Fully operable by keyboard; focus always visible | `e2e/lab-04/accessibility.spec.ts` | Issue 7 | Pending |
-| A11Y-03 | Accessibility | AC-29 | Automated accessibility scan (axe) of both dashboards, Staff and Requester Ticket Detail | No serious or critical violations | `e2e/lab-04/accessibility.spec.ts` | Issue 7 | Pending |
-| RESP-01 | Responsive | AC-30 | Staff Dashboard at desktop, tablet, mobile | No clipping or overlap; cards reflow | Playwright screenshots (Section 4) | Issue 7 | Pending |
-| RESP-02 | Responsive | AC-30 | Requester Dashboard at three viewports | Same | Playwright screenshots (Section 4) | Issue 7 | Pending |
-| RESP-03 | Responsive | AC-30 | Actions Taken table becomes cards on mobile; modal fits | Usable at every size | Playwright screenshots (Section 4) | Issue 7 | Pending |
-| RESP-04 | Responsive | AC-30 | Programmatic check on the screens above | Page `scrollWidth` does not exceed `clientWidth` at any viewport | `e2e/lab-04/dashboards.spec.ts` and `e2e/lab-04/actions-taken-flow.spec.ts` | Issue 7 | Pending |
-| E2E-01 | E2E | AC-01, AC-04, AC-08 | Staff creates, edits, starts, and completes an Action; the Requester sees it read-only | List updates for staff; Requester has no controls | `e2e/lab-04/actions-taken-flow.spec.ts` | Issue 7 | Pending |
-| E2E-02 | E2E | AC-05, AC-11, AC-28 | Follow-up validation; two staff edit the same Action | Second save shows the conflict message and keeps the typed data | `e2e/lab-04/actions-taken-flow.spec.ts` | Issue 7 | Pending |
-| E2E-03 | E2E | AC-13, AC-14, AC-19 | Resolve blocked by an unfinished Action, then complete it and resolve; direct API attempt | Blocked with the open count; allowed after completion; API bypass gets 409 | `e2e/lab-04/ticket-resolution.spec.ts` | Issue 7 | Pending |
-| E2E-04 | E2E | AC-16 | Cancel a Ticket with unfinished Actions | Actions show CANCELLED with the automatic Result | `e2e/lab-04/ticket-resolution.spec.ts` | Issue 7 | Pending |
-| E2E-05 | E2E | AC-02, AC-20, AC-21, AC-23 | Both dashboards: counts, drill-down, empty Requester | Counts match the Queue and My Tickets lists they open; the Urgent Tickets list shows the seeded active High-priority Tickets and not a seeded Resolved High-priority Ticket or a seeded active Medium-priority one | `e2e/lab-04/dashboards.spec.ts` | Issue 7 | Pending |
-| E2E-06 | E2E | AC-33, BR-36 | Console and link sweep through every role's primary flow | Zero console errors; no broken links | `e2e/lab-04/regression-sweep.spec.ts` | Issue 7 | Pending |
-| E2E-07 | E2E | AC-26 | Representative Lab 1-3 flow: login with password change, create Ticket with attachment, staff claim, Internal Note hidden from the Requester, Administrator creates a user | All steps behave as in Lab 3 | `e2e/lab-04/regression-sweep.spec.ts` | Issue 7 | Pending |
+| A11Y-02 | Accessibility | AC-29 | Keyboard operation of cards, status control, and modal | Fully operable by keyboard; focus always visible | `e2e/lab-04/accessibility.spec.ts` | Issue 7 | Pass |
+| A11Y-03 | Accessibility | AC-29 | Automated accessibility scan (axe) of both dashboards, Staff and Requester Ticket Detail | No serious or critical violations | `e2e/lab-04/accessibility.spec.ts` | Issue 7 | Pass |
+| RESP-01 | Responsive | AC-30 | Staff Dashboard at desktop, tablet, mobile | No clipping or overlap; cards reflow | Playwright screenshots (Section 4) | Issue 7 | Pass |
+| RESP-02 | Responsive | AC-30 | Requester Dashboard at three viewports | Same | Playwright screenshots (Section 4) | Issue 7 | Pass |
+| RESP-03 | Responsive | AC-30 | Actions Taken table becomes cards on mobile; modal fits | Usable at every size | Playwright screenshots (Section 4) | Issue 7 | Pass |
+| RESP-04 | Responsive | AC-30 | Programmatic check on the screens above | Page `scrollWidth` does not exceed `clientWidth` at any viewport | `e2e/lab-04/dashboards.spec.ts` and `e2e/lab-04/actions-taken-flow.spec.ts` | Issue 7 | Pass |
+| E2E-01 | E2E | AC-01, AC-04, AC-08 | Staff creates, edits, starts, and completes an Action; the Requester sees it read-only | List updates for staff; Requester has no controls | `e2e/lab-04/actions-taken-flow.spec.ts` | Issue 7 | Pass |
+| E2E-02 | E2E | AC-05, AC-11, AC-28 | Follow-up validation; two staff edit the same Action | Second save shows the conflict message and keeps the typed data | `e2e/lab-04/actions-taken-flow.spec.ts` | Issue 7 | Pass |
+| E2E-03 | E2E | AC-13, AC-14, AC-19 | Resolve blocked by an unfinished Action, then complete it and resolve; direct API attempt | Blocked with the open count; allowed after completion; API bypass gets 409 | `e2e/lab-04/ticket-resolution.spec.ts` | Issue 7 | Pass |
+| E2E-04 | E2E | AC-16 | Cancel a Ticket with unfinished Actions | Actions show CANCELLED with the automatic Result | `e2e/lab-04/ticket-resolution.spec.ts` | Issue 7 | Pass |
+| E2E-05 | E2E | AC-02, AC-20, AC-21, AC-23 | Both dashboards: counts, drill-down, empty Requester | Counts match the Queue and My Tickets lists they open; the Urgent Tickets list shows the seeded active High-priority Tickets and not a seeded Resolved High-priority Ticket or a seeded active Medium-priority one | `e2e/lab-04/dashboards.spec.ts` | Issue 7 | Pass |
+| E2E-06 | E2E | AC-33, BR-36 | Console and link sweep through every role's primary flow | Zero console errors; no broken links | `e2e/lab-04/regression-sweep.spec.ts` | Issue 7 | Pass |
+| E2E-07 | E2E | AC-26 | Representative Lab 1-3 flow: login with password change, create Ticket with attachment, staff claim, Internal Note hidden from the Requester, Administrator creates a user | All steps behave as in Lab 3 | `e2e/lab-04/regression-sweep.spec.ts` | Issue 7 | Pass |
 
 ## 3. Acceptance-Criterion Traceability
 
@@ -299,6 +299,12 @@ runs is a flaky test and must be fixed before release.
 | Issue | Executable tests in this Issue | Recorded |
 |---|---|---|
 | 1 (contract) | None; documentation only | No row changed. Every row stays Pending. The consistency audit in section 8 was done and recorded. |
+| 2 (foundation) | Server | 31 rows Pass. Server 233 tests in 3 runs; rehearsal on a Lab 3 database with real data (`docs/lab-04/evidence/issue-2-rehearsal.md`). |
+| 3 (Actions Taken UI) | Client | 12 rows Pass. Client 79 tests in 3 runs; CI green. |
+| 4 (Ticket workflow) | Server, client | 16 rows Pass. Server 313 and client 121 tests; 20 parallel rounds of create versus resolve (`docs/lab-04/evidence/issue-4-verification.md`). |
+| 5 (dashboards) | Server, client | 29 rows Pass (the 25 planned for Issue 5, plus API-42 and SEC-01 to SEC-03, whose last part arrived here). Server 354 and client 177 tests (`docs/lab-04/evidence/issue-5-verification.md`). |
+| 6 (hardening) | Server, client | 2 rows Pass (API-38, SEC-04). Server 382 and client 230 tests; runtime check of the error middleware on a real server (`docs/lab-04/evidence/issue-6-verification.md`). |
+| 7 (E2E and visual) | Playwright, server, client | 14 rows Pass. Server 382, client 231, Playwright 62 passed and 4 skipped (`test.skip()` in the Lab 3 specs) in 5 consecutive full runs; 48 screenshots byte-identical over 4 runs (`docs/lab-04/evidence/issue-7-verification.md`). |
 
 A row moves to Pass only in the Issue named in "Planned Issue", after the test has really run, with
 evidence in that Issue's Pull Request.
@@ -311,8 +317,15 @@ unmodified.]
 
 ## 7. Known Limitations or Deferred Tests
 
-[Fill in any test intentionally not done, with the reason. For example, a real
-multi-browser concurrency test is replaced by two parallel API sessions.]
+- Concurrency is tested with parallel HTTP requests against the real server (20 at a time) and with two browser contexts for the conflict screen, not with a multi-browser lab.
+- The status-change confirmation is the browser's `window.confirm`, which a screenshot cannot capture; the "confirmation" images show the control before the click and the test asserts the dialog text.
+- Responsive layout, visible focus rings, and contrast are checked by hand and by Playwright, because jsdom does not compute layout. Axe reports one moderate finding on the Staff Ticket Detail (`page-has-heading-one`), kept on purpose because changing heading levels of a Lab 3 screen could break tests that search by heading.
+- In development, React StrictMode calls `/api/auth/me` twice before sign-in, so the signed-out console check expects two 401 responses; a production build calls it once.
+- Screenshots are produced on Windows. Linux in CI renders fonts differently, so images from CI are not committed.
+- For the Lab 2 and Lab 3 forms, duplicate protection is on the UI only; a retry after a lost response can create a second item because those endpoints have no idempotency key. Actions Taken uses `clientRequestId`.
+- The server still allows owner and priority changes on a Closed or Cancelled Ticket (Lab 3 behavior); only the UI makes them read-only. Twelve Lab 1-3 endpoints still read ids with `parseInt`, so `12abc` is read as 12.
+- A cancel replaces the Result of an unfinished Action with the automatic text (BR-18).
+- The Lab 3 helper `loginAndHandlePasswordChange` was not changed; it can be flaky in CI. The Lab 4 specs use their own helpers with explicit waits.
 
 ## 8. Traceability Audit (Issue 1 review)
 
