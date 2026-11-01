@@ -63,8 +63,7 @@ Header row: greeting "Welcome back, <first name>" with a one-line subtitle on th
 on the right a Refresh button (secondary) and small "Updated hh:mm" text (the API's `generatedAt` shown in the browser's time zone). Refresh shows a
 busy state and re-fetches; it does not reload the page.
 
-Metric cards (all are links; each is one focusable element with an accessible name such
-as "Unassigned tickets: 7. View all"):
+Metric cards (all are links; each is one focusable element whose accessible name is its visible text, for example "Unassigned 7 View all" (WCAG 2.5.3, Label in Name); the arrow is hidden from assistive technology and a visually hidden sentence, linked with `aria-describedby`, says what the link opens):
 
 | Card | Number | Opens |
 |---|---|---|
@@ -265,8 +264,8 @@ text never replaced by truncation of the only copy of important data.
 
 - Semantics: a header with navigation, one `main`, one `h1` per page, ordered headings,
   lists for lists, tables with header cells for tables.
-- A metric card is a single link whose accessible name combines label, value, and action
-  ("Open tickets: 3. View all"). The number alone is never the whole name.
+- A metric card is a single link whose accessible name is its visible text: label, value, and action ("Open 3 View all"). The visible text must be contained in the accessible name
+  (WCAG 2.5.3), so no `aria-label` replaces it. The number alone is never the whole name. A visually hidden description (linked with `aria-describedby`) says what the link opens.
 - Dialogs use `role="dialog"` with `aria-modal="true"` and an `aria-labelledby` title. On
   open, focus moves into the dialog; Tab and Shift+Tab stay inside; Escape closes it (after
   the unsaved-changes confirmation if needed); on close, focus returns to the control that
