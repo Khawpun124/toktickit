@@ -328,6 +328,27 @@ describe("SEC-04: app-level safe errors", () => {
     expectSafe(res);
   });
 
+  it("SEC-04: a body in a charset the parser cannot read keeps its 415 with the safe body, and logs one line without the body or cookie", async () => {
+    const write = vi.spyOn(serverLog, "write");
+    const marker = "MARKER-body-3c19";
+    const token = fx.users.requesterA.cookie.split(";")[0].split("=")[1];
+    const res = await request(app).post(`/api/tickets/${ticketId}/comments`).set("Cookie", fx.users.requesterA.cookie)
+      .set("Content-Type", "application/json; charset=klingon-9").send(`{"content": "${marker}"}`);
+    expect(res.status).toBe(415);
+    expect(res.body).toEqual({ error: "Request body could not be read.", code: "VALIDATION_FAILED" });
+    expectSafe(res);
+
+    expect(write).toHaveBeenCalledTimes(1);
+    const entry: ServerErrorEntry = write.mock.calls[0][0];
+    expect(entry).toMatchObject({ method: "POST", name: "UnsupportedMediaTypeError" });
+    expect(entry.message).toMatch(/unsupported charset/i);
+    const logged = JSON.stringify(entry);
+    expect(logged).not.toContain(marker);
+    expect(logged).not.toContain(token);
+    expect(logged).not.toContain("tk_session");
+    expect(await prisma.publicComment.count({ where: { ticketId } })).toBe(0);
+  });
+
   it("SEC-04: an unknown /api path gets 404 NOT_FOUND for every method, with or without a session", async () => {
     const cases: [string, string][] = [
       ["get", "/api/does-not-exist"], ["post", "/api/tickets/1/unknown"], ["delete", `/api/staff/actions/1`],
