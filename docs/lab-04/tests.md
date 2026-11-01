@@ -95,7 +95,7 @@ Status legend (the Final column):
 | SEC-01 | Authorization | BR-25 | Table-driven: every new write endpoint as Requester | 403 each time, no data changed | `server/tests/lab-04/authorization.api.test.ts` | Issues 2, 4, 5 | Pass |
 | SEC-02 | Authorization | BR-25 | Every new endpoint without a session | 401 each time | `server/tests/lab-04/authorization.api.test.ts` | Issues 2, 4, 5 | Pass |
 | SEC-03 | Authorization | Lab 3 BR-02 | User who must change password calls new endpoints | Blocked until the password is changed | `server/tests/lab-04/authorization.api.test.ts` | Issues 2, 4, 5 | Pass |
-| SEC-04 | Authorization | BR-33 | Force an unexpected server error, and send a malformed JSON body | Body is the safe `{error, code}` shape; no stack trace, SQL, path, or HTML error page | `server/tests/lab-04/authorization.api.test.ts` | Issue 6 | Pending |
+| SEC-04 | Authorization | BR-33 | Force an unexpected server error that escapes a handler, send a malformed JSON body, and request an unknown `/api` path | Body is the safe `{error, code}` shape; no stack trace, SQL, path, or HTML error page | `server/tests/lab-04/authorization.api.test.ts` | Issue 6 | Pending |
 | SEC-05 | Authorization | AC-04 | Other Requester's Ticket versus a nonexistent Ticket | Responses indistinguishable (no existence leak) | `server/tests/lab-04/authorization.api.test.ts` | Issue 2 | Pass |
 | PERF-01 | Performance-smoke | AC-32 | Both dashboards with 500 seeded Tickets | Each responds in under 1 second | `server/tests/lab-04/performance-smoke.test.ts` | Issue 5 | Pass |
 | PERF-02 | Performance-smoke | AC-32 | Actions list for a Ticket with 200 Actions | Responds in under 1 second | `server/tests/lab-04/performance-smoke.test.ts` | Issue 2 | Pass |

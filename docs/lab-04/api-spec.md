@@ -60,6 +60,12 @@ Lab 1-3 clients and tests keep working.
 | 500 | `INTERNAL_ERROR` | Unexpected failure, safe message only |
 | 503 | `NOT_READY` | Database not reachable (readiness endpoint only) |
 
+App-level safe errors (BR-33), the same for every route including the Lab 1-3 ones, because they only answer what an endpoint did not answer itself:
+a request body that is not valid JSON gets 400 `VALIDATION_FAILED` with the message "Request body is not valid JSON."; an unknown `/api/...` path gets
+404 `NOT_FOUND`; any error that escapes a handler gets 500 `INTERNAL_ERROR`. None of them contains a stack trace, SQL, a file path, or an HTML page,
+and each is logged on the server with its real cause (without request bodies, cookies, or passwords). The 4xx and 5xx bodies that Lab 1-3 handlers
+send themselves are not changed.
+
 ### Time
 
 All timestamps are ISO-8601 in UTC. Dashboard calculations use one server-captured `generatedAt`
