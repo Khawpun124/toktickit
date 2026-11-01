@@ -62,7 +62,8 @@ Lab 1-3 clients and tests keep working.
 
 App-level safe errors (BR-33), the same for every route including the Lab 1-3 ones, because they only answer what an endpoint did not answer itself:
 a request body that is not valid JSON gets 400 `VALIDATION_FAILED` with the message "Request body is not valid JSON."; an unknown `/api/...` path gets
-404 `NOT_FOUND`; any error that escapes a handler gets 500 `INTERNAL_ERROR`. None of them contains a stack trace, SQL, a file path, or an HTML page,
+404 `NOT_FOUND`; a body larger than the parser limit gets 413 `VALIDATION_FAILED` with the message "Request body is too large."; any error that
+escapes a handler (including a promise a handler rejects) gets 500 `INTERNAL_ERROR`. None of them contains a stack trace, SQL, a file path, or an HTML page,
 and each is logged on the server with its real cause (without request bodies, cookies, or passwords). The 4xx and 5xx bodies that Lab 1-3 handlers
 send themselves are not changed.
 

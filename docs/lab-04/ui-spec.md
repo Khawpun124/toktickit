@@ -294,7 +294,10 @@ text never replaced by truncation of the only copy of important data.
   destructive style only for cancelling or removing.
 - Every link goes somewhere real: no `#` links, no empty destinations, no dead routes.
 - Date and time format is consistent and shown in the browser's time zone.
-- Error text is human-readable; no screen may show raw JSON, status codes, or stack traces.
+- Error text is human-readable; no screen may show raw JSON, status codes, or stack traces. One exception: the three Lab 3 forbidden
+  screens (Staff Ticket Detail, Staff Queue, User Management) keep the title "403 Forbidden" because Lab 3 tests assert that text and Lab
+  1-3 tests must pass unchanged; a plain sentence under the title says that the user has no access. The Staff Ticket Detail not-found
+  screen says "Ticket not found", like the Requester one.
 
 ## 13. Visual and Accessibility Inspection Checklist
 
