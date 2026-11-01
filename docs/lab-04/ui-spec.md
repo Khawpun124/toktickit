@@ -246,7 +246,7 @@ Every data-driven screen implements the Lab 2 and Lab 3 states, plus these speci
 - Conflict: a readable alert with the action to recover (reload).
 - Failure: a safe message with a Retry button, layout intact. Dashboard data arrives from
   one request, so failure replaces the data area only, not the whole page.
-- Success: short confirmation in a live region; no blocking dialog. On the Staff Ticket Detail it is a toast fixed to the bottom of the viewport (above the safe area on phones): it never covers a heading or a control the user is working with and never moves the page content, and it disappears by itself after a few seconds.
+- Success: short confirmation in a live region; no blocking dialog. On the Staff Ticket Detail it is a toast fixed to the bottom of the viewport (above the safe area on phones): it never covers a heading or the control that triggered it, never blocks a click (the pointer passes through it), and never moves the page content; for the few seconds it shows, it may cover other content at the bottom of the screen, and it disappears by itself.
 
 ## 10. Responsive Rules
 
