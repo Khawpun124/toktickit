@@ -12,7 +12,8 @@ import { StaffTicketDetailScreen } from "./components/StaffTicketDetailScreen.js
 import { UserManagementScreen } from "./components/UserManagementScreen.js";
 import { RequesterDashboardScreen } from "./components/dashboard/RequesterDashboardScreen.js";
 import { StaffDashboardScreen } from "./components/dashboard/StaffDashboardScreen.js";
-import { DashboardRoute, landingPathFor } from "./components/dashboard/DashboardRoute.js";
+import { DashboardRoute } from "./components/dashboard/DashboardRoute.js";
+import { ROUTES, landingPathFor } from "./roles.js";
 import "./index.css";
 
 /**
@@ -75,14 +76,14 @@ export function AppContent() {
     return (
       <Routes>
         <Route path="/" element={<Navigate to={defaultPath} replace />} />
-        <Route path="/dashboard" element={<DashboardRoute path="/dashboard"><RequesterDashboardScreen /></DashboardRoute>} />
-        <Route path="/staff/dashboard" element={<DashboardRoute path="/staff/dashboard"><StaffDashboardScreen /></DashboardRoute>} />
-        <Route path="/tickets" element={<MyTicketsScreen />} />
-        <Route path="/tickets/new" element={<CreateTicketScreen />} />
-        <Route path="/tickets/:id" element={<RequesterTicketDetailScreen />} />
-        <Route path="/staff/tickets" element={<StaffTicketQueueScreen />} />
-        <Route path="/staff/tickets/:id" element={<StaffTicketDetailScreen />} />
-        <Route path="/admin/users" element={<UserManagementScreen />} />
+        <Route path={ROUTES.requesterDashboard} element={<DashboardRoute path={ROUTES.requesterDashboard}><RequesterDashboardScreen /></DashboardRoute>} />
+        <Route path={ROUTES.staffDashboard} element={<DashboardRoute path={ROUTES.staffDashboard}><StaffDashboardScreen /></DashboardRoute>} />
+        <Route path={ROUTES.myTickets} element={<MyTicketsScreen />} />
+        <Route path={ROUTES.createTicket} element={<CreateTicketScreen />} />
+        <Route path={ROUTES.requesterTicket} element={<RequesterTicketDetailScreen />} />
+        <Route path={ROUTES.queue} element={<StaffTicketQueueScreen />} />
+        <Route path={ROUTES.staffTicket} element={<StaffTicketDetailScreen />} />
+        <Route path={ROUTES.userManagement} element={<UserManagementScreen />} />
         <Route path="*" element={<Navigate to={defaultPath} replace />} />
       </Routes>
     );

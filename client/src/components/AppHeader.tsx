@@ -1,37 +1,30 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
+import { ROLE_LABELS, ROUTES, dashboardPathFor } from "../roles.js";
 
-interface AppHeaderProps {
-  activeTab?: "dashboard" | "my-tickets" | "create-ticket" | "my-queue" | "user-management";
-  onSelectTab?: (tab: any) => void;
+type Tab = "dashboard" | "my-tickets" | "create-ticket" | "my-queue" | "user-management";
+
+/** Which entry is the current page, from the path (src/roles.ts holds the paths). */
+function tabFor(pathname: string): Tab {
+  if (pathname === ROUTES.requesterDashboard || pathname === ROUTES.staffDashboard) return "dashboard";
+  if (pathname === ROUTES.createTicket) return "create-ticket";
+  if (pathname.startsWith(ROUTES.userManagement)) return "user-management";
+  if (pathname.startsWith(ROUTES.queue)) return "my-queue";
+  return "my-tickets";
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) => {
+export const AppHeader: React.FC = () => {
   const { user, logout, refreshUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
   const currentUser = user;
-
-  const currentTab =
-    activeTab ||
-    (location.pathname === "/dashboard" || location.pathname === "/staff/dashboard"
-      ? "dashboard"
-      : location.pathname === "/tickets/new"
-      ? "create-ticket"
-      : location.pathname.startsWith("/admin/users")
-      ? "user-management"
-      : location.pathname.startsWith("/staff/tickets")
-      ? "my-queue"
-      : "my-tickets");
+  const currentTab = tabFor(location.pathname);
 
   // Lab 4: the Dashboard entry, and aria-current="page" on the active entry (ui-spec section 3).
-  const handleNavDashboard = () => {
-    if (onSelectTab) onSelectTab("dashboard");
-    navigate(currentUser?.role === "REQUESTER" ? "/dashboard" : "/staff/dashboard");
-  };
-  const ariaCurrent = (tab: string) => (currentTab === tab ? ("page" as const) : undefined);
+  const handleNavDashboard = () => navigate(dashboardPathFor(currentUser?.role));
+  const ariaCurrent = (tab: Tab) => (currentTab === tab ? ("page" as const) : undefined);
   const dashboardButton = (
     <button
       onClick={handleNavDashboard}
@@ -46,25 +39,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
     </button>
   );
 
-  const handleNavMyTickets = () => {
-    if (onSelectTab) onSelectTab("my-tickets");
-    navigate("/tickets");
-  };
-
-  const handleNavCreateTicket = () => {
-    if (onSelectTab) onSelectTab("create-ticket");
-    navigate("/tickets/new");
-  };
-
-  const handleNavMyQueue = () => {
-    if (onSelectTab) onSelectTab("my-queue");
-    navigate("/staff/tickets");
-  };
-
-  const handleNavUserManagement = () => {
-    if (onSelectTab) onSelectTab("user-management");
-    navigate("/admin/users");
-  };
+  const handleNavMyTickets = () => navigate(ROUTES.myTickets);
+  const handleNavCreateTicket = () => navigate(ROUTES.createTicket);
+  const handleNavMyQueue = () => navigate(ROUTES.queue);
+  const handleNavUserManagement = () => navigate(ROUTES.userManagement);
 
   const handleLogout = async () => {
     if (user) {
@@ -87,16 +65,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, onSelectTab }) 
     }
   };
 
-  const formatRoleLabel = (role?: string) => {
-    switch (role) {
-      case "IT_STAFF":
-        return "IT Staff";
-      case "ADMINISTRATOR":
-        return "Administrator";
-      default:
-        return "Requester";
-    }
-  };
+  const formatRoleLabel = (role?: string) => ROLE_LABELS[(role ?? "REQUESTER") as keyof typeof ROLE_LABELS] ?? ROLE_LABELS.REQUESTER;
+
 
   return (
     <header className="zg-header shadow-sm py-2 px-3" style={{ backgroundColor: "var(--zg-primary)" }}>

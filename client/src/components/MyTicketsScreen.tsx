@@ -257,6 +257,7 @@ export const MyTicketsScreen: React.FC<MyTicketsScreenProps> = ({
                 type="text"
                 className="form-control"
                 placeholder="Search ticket number or summary..."
+                aria-label="Search tickets"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);

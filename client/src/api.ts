@@ -5,41 +5,9 @@ export interface Category {
   name: string;
 }
 
-export interface RequesterUser {
-  id: number;
-  name: string;
-  email: string;
-}
-
 export interface RelatedSystem {
   id: number;
   name: string;
-}
-
-export interface SystemStatus {
-  online: boolean;
-  categories: Category[];
-}
-
-export interface HealthResponse {
-  status: string;
-  service: string;
-}
-
-// Issue 2 — API health check
-export async function checkHealth(): Promise<HealthResponse> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/api/health`);
-  } catch {
-    throw new Error("Unable to connect to TokTickIT API");
-  }
-
-  if (!res.ok) {
-    throw new Error("TokTickIT API returned an unexpected error");
-  }
-
-  return await res.json();
 }
 
 // Issue 4 — Category list
@@ -53,22 +21,6 @@ export async function getCategories(): Promise<Category[]> {
 
   if (!res.ok) {
     throw new Error("TokTickIT API returned an unexpected error");
-  }
-
-  return await res.json();
-}
-
-// Issue 2 — Development Requester list
-export async function getRequesters(): Promise<RequesterUser[]> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/api/requesters`);
-  } catch {
-    throw new Error("Unable to connect to TokTickIT API");
-  }
-
-  if (!res.ok) {
-    throw new Error("Unable to load requesters");
   }
 
   return await res.json();
@@ -88,15 +40,6 @@ export async function getRelatedSystems(): Promise<RelatedSystem[]> {
   }
 
   return await res.json();
-}
-
-export async function checkSystem(): Promise<SystemStatus> {
-  const health = await checkHealth();
-  if (health.status !== "ok") {
-    return { online: false, categories: [] };
-  }
-  const categories = await getCategories();
-  return { online: true, categories };
 }
 
 export interface CreateTicketPayload {
@@ -622,7 +565,8 @@ export async function login(email: string, password: string): Promise<AuthUser> 
     throw new Error("Unable to connect to TokTickIT API");
   }
 
-  const data = await res.json();
+  // A body that is not JSON (for example a proxy error page) must not surface as a parse error.
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.error || "Invalid email or password. Please try again.");
   }
@@ -681,7 +625,8 @@ export async function changePassword(
     throw new Error("Unable to connect to TokTickIT API");
   }
 
-  const data = await res.json();
+  // A body that is not JSON (for example a proxy error page) must not surface as a parse error.
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err: any = new Error(data.error || "Password change failed");
     err.rules = data.rules;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
 import {
@@ -12,6 +12,7 @@ import {
   resetAdminUserPassword,
 } from "../api.js";
 import { PasswordRuleChecklist, validatePasswordRules } from "./PasswordRuleChecklist.js";
+import { useDialogFocus } from "./useDialogFocus.js";
 
 // ── Role badge helpers ──────────────────────────────────────────────────────
 
@@ -212,6 +213,14 @@ export const UserManagementScreen: React.FC = () => {
     setPanelMode(null);
     setSelectedUser(null);
   };
+
+  // BR-35: below 992 px the panel is a full-screen overlay, so there it is a modal dialog (focus
+  // trapped, Escape closes, focus returns). On desktop it is a side panel in the page, not a dialog,
+  // and the overlay copy is hidden.
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const narrowScreen = typeof window.matchMedia === "function" && window.matchMedia("(max-width: 991.98px)").matches;
+  const overlayActive = panelMode !== null && narrowScreen;
+  useDialogFocus(overlayRef, { active: overlayActive, onClose: closePanel, canClose: !submitting && !resetting });
 
   // ── Submit create ─────────────────────────────────────────────────────────
 
@@ -543,6 +552,8 @@ export const UserManagementScreen: React.FC = () => {
               {/* Mobile full-screen modal overlay */}
               <div
                 className="d-lg-none"
+                ref={overlayRef}
+                {...(overlayActive ? { role: "dialog", "aria-modal": true, "aria-label": panelMode === "create" ? "Create New User" : "Edit User" } : {})}
                 style={{
                   position: "fixed",
                   inset: 0,
