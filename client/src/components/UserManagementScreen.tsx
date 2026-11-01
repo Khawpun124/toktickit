@@ -79,17 +79,6 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ isActive }) => (
   </span>
 );
 
-// ── Password rules checker ──────────────────────────────────────────────────
-
-function checkPasswordRules(pw: string) {
-  return {
-    minLength: pw.length >= 8,
-    hasUpperLower: /[A-Z]/.test(pw) && /[a-z]/.test(pw),
-    hasNumber: /[0-9]/.test(pw),
-    hasSpecialChar: /[^A-Za-z0-9]/.test(pw),
-  };
-}
-
 // ── Main Component ──────────────────────────────────────────────────────────
 
 type PanelMode = "create" | "edit" | null;
@@ -368,7 +357,6 @@ export const UserManagementScreen: React.FC = () => {
     );
   }
 
-  const passwordRules = checkPasswordRules(formPassword);
   const panelOpen = panelMode !== null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -532,7 +520,6 @@ export const UserManagementScreen: React.FC = () => {
                     resetError={resetError}
                     resetSuccess={resetSuccess}
                     resetting={resetting}
-                    passwordRules={passwordRules}
                     onChangeName={setFormName}
                     onChangeEmail={(v) => { setFormEmail(v); setEmailError(null); }}
                     onChangeRole={setFormRole}
@@ -592,7 +579,6 @@ export const UserManagementScreen: React.FC = () => {
                     resetError={resetError}
                     resetSuccess={resetSuccess}
                     resetting={resetting}
-                    passwordRules={passwordRules}
                     onChangeName={setFormName}
                     onChangeEmail={(v) => { setFormEmail(v); setEmailError(null); }}
                     onChangeRole={setFormRole}
@@ -637,7 +623,6 @@ interface PanelContentProps {
   resetError: string | null;
   resetSuccess: string | null;
   resetting: boolean;
-  passwordRules: ReturnType<typeof checkPasswordRules>;
   onChangeName: (v: string) => void;
   onChangeEmail: (v: string) => void;
   onChangeRole: (v: UserRole) => void;
@@ -671,7 +656,6 @@ const PanelContent: React.FC<PanelContentProps> = ({
   resetError,
   resetSuccess,
   resetting,
-  passwordRules,
   onChangeName,
   onChangeEmail,
   onChangeRole,

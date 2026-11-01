@@ -458,11 +458,6 @@ export async function uploadAttachment(
   return data;
 }
 
-// Issue 5 — Download attachment helper function
-export function downloadAttachmentUrl(attachmentId: number): string {
-  return `${API_URL}/api/attachments/${attachmentId}/download`;
-}
-
 // Issue 5 — Download attachment with authentication
 export async function downloadAttachment(
   attachmentId: number,

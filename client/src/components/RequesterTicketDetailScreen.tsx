@@ -7,7 +7,6 @@ import {
   uploadAttachment,
   deleteAttachment,
   downloadAttachment,
-  downloadAttachmentUrl,
   getPublicComments,
   postPublicComment,
   updateResolutionFlag,
@@ -206,7 +205,6 @@ export const RequesterTicketDetailScreen: React.FC<RequesterTicketDetailScreenPr
 
 
   const activeAttachments = attachments.filter((att) => att.removedAt === null);
-  const removedAttachments = attachments.filter((att) => att.removedAt !== null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
