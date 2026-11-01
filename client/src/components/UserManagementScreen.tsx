@@ -241,8 +241,15 @@ export const UserManagementScreen: React.FC = () => {
       };
       await createAdminUser(payload);
       setFormSuccess("User created successfully.");
+      // BR-34: the entered values are cleared only now, after success. The panel stays open with the
+      // success message, ready for the next user.
+      setFormName("");
+      setFormEmail("");
+      setFormRole("REQUESTER");
+      setFormIsActive(true);
+      setFormPassword("");
+      setShowPassword(false);
       await fetchUsers(search, roleFilter);
-      // Keep panel open showing success
     } catch (err: any) {
       if (err.status === 400 && err.message?.toLowerCase().includes("email")) {
         setEmailError(err.message);
