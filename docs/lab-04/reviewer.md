@@ -320,9 +320,4 @@ How I reviewed: I asked for evidence from real runs instead of
 statements, checked `git diff --stat` for files unrelated to the Issue
 and for edits to earlier Labs' tests, compared the acceptance criteria
 with the tests that cover them, and looked at the CI result.
-
-## Evidence
-
-[แนบ/แปะ screenshot หน้า PR ที่แสดงสถานะ "Approved" สำหรับทุก PR ของ Lab 4
-ทั้งที่ partner approve ให้คุณ (Issue 1 ถึง 7, fix PR และ Release PR)
 และที่คุณ approve ให้ partner]
