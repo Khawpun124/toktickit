@@ -654,6 +654,11 @@ app.post("/api/tickets/:id/attachments", requireAuth, requirePasswordChanged, fo
     let success = false;
 
     try {
+      // multer stops at 10 MB and leaves no req.file; report it as the size limit, not as a missing file.
+      if (err?.code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ error: "File exceeds the 5 MB limit" });
+        return;
+      }
       const file = req.file;
       if (!file) {
         res.status(400).json({ error: "No file uploaded" });
